@@ -12,7 +12,7 @@ import (
 func NewRouter(cfg config.Config, db *gorm.DB) (*gin.Engine, error) {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery())
+	router.Use(gin.Logger(), gin.Recovery(), corsMiddleware(cfg))
 
 	authHandler := newAuthHandler(cfg, db)
 	apiHandler := newAPIHandler(db)

@@ -57,12 +57,13 @@ jobs:
           WACK_DB_PATH: ${{ secrets.WACK_DB_PATH }}
           WACK_DATA_DIR: ${{ secrets.WACK_DATA_DIR }}
           WACK_JWT_SECRET: ${{ secrets.WACK_JWT_SECRET }}
+          WACK_CORS_ALLOW_ORIGIN: ${{ secrets.WACK_CORS_ALLOW_ORIGIN }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
-          envs: BACKEND_DEPLOY_PATH,BACKEND_SERVICE_NAME,BACKEND_SERVICE_USER,BACKEND_PORT,WACK_DB_PATH,WACK_DATA_DIR,WACK_JWT_SECRET
+          envs: BACKEND_DEPLOY_PATH,BACKEND_SERVICE_NAME,BACKEND_SERVICE_USER,BACKEND_PORT,WACK_DB_PATH,WACK_DATA_DIR,WACK_JWT_SECRET,WACK_CORS_ALLOW_ORIGIN
           script: |
             set -eu
             mkdir -p /tmp/wack-backend-deploy/extracted
@@ -76,4 +77,5 @@ jobs:
               "$BACKEND_PORT" \
               "$WACK_DB_PATH" \
               "$WACK_DATA_DIR" \
-              "$WACK_JWT_SECRET"
+              "$WACK_JWT_SECRET" \
+              "$WACK_CORS_ALLOW_ORIGIN"

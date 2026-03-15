@@ -9,6 +9,7 @@ APP_PORT="${5:?app port is required}"
 DB_PATH="${6:?db path is required}"
 DATA_DIR="${7:?data dir is required}"
 JWT_SECRET="${8:?jwt secret is required}"
+CORS_ALLOW_ORIGIN="${9:-}"
 
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 ENV_DIR="/etc/wack"
@@ -52,6 +53,7 @@ WACK_PORT=${APP_PORT}
 WACK_DATA_DIR=${DATA_DIR}
 WACK_DB_PATH=${DB_PATH}
 WACK_JWT_SECRET=${JWT_SECRET}
+WACK_CORS_ALLOW_ORIGIN=${CORS_ALLOW_ORIGIN}
 EOF
 
 run_root ln -sfn "${NEW_RELEASE_DIR}" "${CURRENT_LINK}"
