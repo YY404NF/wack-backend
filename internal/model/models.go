@@ -30,13 +30,13 @@ type User struct {
 func (User) TableName() string { return "user" }
 
 type Class struct {
-	ID        uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	ClassCode string    `gorm:"column:class_code;size:50;not null;uniqueIndex" json:"class_code"`
-	ClassName string    `gorm:"column:class_name;size:100;not null" json:"class_name"`
-	Grade     int       `gorm:"column:grade;not null;index:idx_grade_major" json:"grade"`
-	MajorName string    `gorm:"column:major_name;size:100;not null;index:idx_grade_major" json:"major_name"`
-	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+	ID           uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	ClassName    string    `gorm:"column:class_name;size:100;not null" json:"class_name"`
+	Grade        int       `gorm:"column:grade;not null;index:idx_grade_major" json:"grade"`
+	MajorName    string    `gorm:"column:major_name;size:100;not null;index:idx_grade_major" json:"major_name"`
+	StudentCount int64     `gorm:"-" json:"student_count"`
+	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
 
 func (Class) TableName() string { return "class" }

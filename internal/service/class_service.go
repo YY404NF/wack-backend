@@ -21,7 +21,14 @@ func (s *ClassService) ListClasses(page, pageSize int) ([]model.Class, int64, er
 		return nil, 0, err
 	}
 	var classes []model.Class
-	if err := query.Order("id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&classes).Error; err != nil {
+	if err := s.db.Model(&model.Class{}).
+		Select("class.id, class.class_name, class.grade, class.major_name, class.created_at, class.updated_at, COUNT(user_class.id) AS student_count").
+		Joins("LEFT JOIN user_class ON user_class.class_id = class.id").
+		Group("class.id").
+		Order("class.grade DESC, class.major_name ASC, class.class_name ASC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Scan(&classes).Error; err != nil {
 		return nil, 0, err
 	}
 	return classes, total, nil
@@ -45,7 +52,6 @@ func (s *ClassService) UpdateClass(id uint64, req model.Class) (model.Class, err
 		return model.Class{}, ErrClassNotFound
 	}
 	if err := s.db.Model(&class).Updates(map[string]interface{}{
-		"class_code": req.ClassCode,
 		"class_name": req.ClassName,
 		"grade":      req.Grade,
 		"major_name": req.MajorName,
