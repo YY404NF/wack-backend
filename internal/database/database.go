@@ -1,0 +1,78 @@
+package database
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+
+	"wack-backend/internal/model"
+)
+
+func OpenAndMigrate(databasePath string) (*gorm.DB, error) {
+	if err := os.MkdirAll(filepath.Dir(databasePath), 0o755); err != nil {
+		return nil, fmt.Errorf("mkdir db dir: %w", err)
+	}
+
+	db, err := gorm.Open(sqlite.Open(databasePath), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := db.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+		return nil, fmt.Errorf("enable foreign keys: %w", err)
+	}
+
+	if err := db.AutoMigrate(
+		&model.User{},
+		&model.Class{},
+		&model.UserClass{},
+		&model.StudentFreeTime{},
+		&model.Course{},
+		&model.CourseStudent{},
+		&model.CourseClass{},
+		&model.CourseSession{},
+		&model.AttendanceCheck{},
+		&model.AttendanceDetail{},
+		&model.AttendanceDetailLog{},
+		&model.AdminOperationLog{},
+	); err != nil {
+		return nil, fmt.Errorf("auto migrate: %w", err)
+	}
+
+	if err := seedAdmin(db); err != nil {
+		return nil, fmt.Errorf("seed admin: %w", err)
+	}
+
+	return db, nil
+}
+
+func seedAdmin(db *gorm.DB) error {
+	var count int64
+	if err := db.Model(&model.User{}).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	admin := model.User{
+		StudentID:    "admin",
+		PasswordHash: string(passwordHash),
+		RealName:     "系统管理员",
+		Role:         model.RoleAdmin,
+		Status:       model.UserStatusActive,
+	}
+	return db.Create(&admin).Error
+}
