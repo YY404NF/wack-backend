@@ -1,17 +1,13 @@
 package httpserver
 
 import (
-	"errors"
-
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 
-	"wack-backend/internal/model"
+	"wack-backend/internal/service"
 )
 
 func (h *authHandler) setupStatus(c *gin.Context) {
-	initialized, err := h.hasAnyAdmin()
+	initialized, err := h.auth.HasAnyAdmin()
 	if err != nil {
 		fail(c, 500, "load setup status failed")
 		return
@@ -33,7 +29,7 @@ func (h *authHandler) initializeSystem(c *gin.Context) {
 		return
 	}
 
-	initialized, err := h.hasAnyAdmin()
+	initialized, err := h.auth.HasAnyAdmin()
 	if err != nil {
 		fail(c, 500, "load setup status failed")
 		return
@@ -43,31 +39,8 @@ func (h *authHandler) initializeSystem(c *gin.Context) {
 		return
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		fail(c, 500, "hash password failed")
-		return
-	}
-
-	admin := model.User{
-		StudentID:    req.StudentID,
-		PasswordHash: string(hash),
-		RealName:     req.RealName,
-		Role:         model.RoleAdmin,
-		Status:       model.UserStatusActive,
-	}
-
-	if err := h.db.Transaction(func(tx *gorm.DB) error {
-		var total int64
-		if err := tx.Model(&model.User{}).Count(&total).Error; err != nil {
-			return err
-		}
-		if total > 0 {
-			return errors.New("system already initialized")
-		}
-		return tx.Create(&admin).Error
-	}); err != nil {
-		if err.Error() == "system already initialized" {
+	if err := h.auth.InitializeSystem(req.StudentID, req.RealName, req.Password); err != nil {
+		if service.IsServiceError(err, service.ErrSystemAlreadyInitialized) {
 			fail(c, 409, "system already initialized")
 			return
 		}
@@ -78,12 +51,4 @@ func (h *authHandler) initializeSystem(c *gin.Context) {
 	ok(c, gin.H{
 		"initialized": true,
 	})
-}
-
-func (h *authHandler) hasAnyAdmin() (bool, error) {
-	var count int64
-	if err := h.db.Model(&model.User{}).Where("role = ?", model.RoleAdmin).Count(&count).Error; err != nil {
-		return false, err
-	}
-	return count > 0, nil
 }

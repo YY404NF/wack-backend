@@ -5,24 +5,23 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
 	"wack-backend/internal/config"
-	"wack-backend/internal/model"
+	"wack-backend/internal/service"
 )
 
 type authHandler struct {
-	cfg config.Config
-	db  *gorm.DB
+	cfg  config.Config
+	auth *service.AuthService
 }
 
 func newAuthHandler(cfg config.Config, db *gorm.DB) *authHandler {
-	return &authHandler{cfg: cfg, db: db}
+	return &authHandler{cfg: cfg, auth: service.NewAuthService(db)}
 }
 
 func (h *authHandler) login(c *gin.Context) {
-	initialized, err := h.hasAnyAdmin()
+	initialized, err := h.auth.HasAnyAdmin()
 	if err != nil {
 		fail(c, 500, "load setup status failed")
 		return
@@ -41,17 +40,16 @@ func (h *authHandler) login(c *gin.Context) {
 		return
 	}
 
-	var user model.User
-	if err := h.db.First(&user, "student_id = ?", req.StudentID).Error; err != nil {
-		fail(c, 401, "invalid credentials")
-		return
-	}
-	if user.Status != model.UserStatusActive {
-		fail(c, 403, "user is frozen")
-		return
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		fail(c, 401, "invalid credentials")
+	user, err := h.auth.Authenticate(req.StudentID, req.Password)
+	if err != nil {
+		switch {
+		case service.IsServiceError(err, service.ErrInvalidCredentials):
+			fail(c, 401, "invalid credentials")
+		case service.IsServiceError(err, service.ErrUserFrozen):
+			fail(c, 403, "user is frozen")
+		default:
+			fail(c, 500, "authenticate failed")
+		}
 		return
 	}
 
@@ -98,24 +96,15 @@ func (h *authHandler) changePassword(c *gin.Context) {
 		return
 	}
 
-	var dbUser model.User
-	if err := h.db.First(&dbUser, user.ID).Error; err != nil {
-		fail(c, 404, "user not found")
-		return
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(dbUser.PasswordHash), []byte(req.OldPassword)); err != nil {
-		fail(c, 400, "old password is incorrect")
-		return
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
-	if err != nil {
-		fail(c, 500, "hash password failed")
-		return
-	}
-
-	if err := h.db.Model(&dbUser).Update("password_hash", string(hash)).Error; err != nil {
-		fail(c, 500, "update password failed")
+	if err := h.auth.ChangePassword(user.ID, req.OldPassword, req.NewPassword); err != nil {
+		switch {
+		case service.IsServiceError(err, service.ErrUserNotFound):
+			fail(c, 404, "user not found")
+		case service.IsServiceError(err, service.ErrOldPasswordIncorrect):
+			fail(c, 400, "old password is incorrect")
+		default:
+			fail(c, 500, "update password failed")
+		}
 		return
 	}
 	ok(c, gin.H{})
@@ -137,25 +126,16 @@ func (h *authHandler) updateProfile(c *gin.Context) {
 		return
 	}
 
-	var dbUser model.User
-	if err := h.db.First(&dbUser, user.ID).Error; err != nil {
-		fail(c, 404, "user not found")
-		return
-	}
-
-	if err := h.db.Model(&dbUser).Updates(map[string]interface{}{
-		"student_id": req.StudentID,
-		"real_name":  req.RealName,
-	}).Error; err != nil {
+	updatedUser, err := h.auth.UpdateProfile(user.ID, req.StudentID, req.RealName)
+	if err != nil {
+		if service.IsServiceError(err, service.ErrUserNotFound) {
+			fail(c, 404, "user not found")
+			return
+		}
 		fail(c, 400, "update profile failed")
 		return
 	}
-
-	if err := h.db.First(&dbUser, user.ID).Error; err != nil {
-		fail(c, 500, "reload profile failed")
-		return
-	}
-	ok(c, dbUser)
+	ok(c, updatedUser)
 }
 
 func (h *authHandler) signToken(userID uint64, role int) (string, error) {

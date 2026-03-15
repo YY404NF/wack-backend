@@ -9,14 +9,16 @@ import (
 	"gorm.io/gorm"
 
 	"wack-backend/internal/model"
+	"wack-backend/internal/service"
 )
 
 type apiHandler struct {
-	db *gorm.DB
+	db    *gorm.DB
+	users *service.UserService
 }
 
 func newAPIHandler(db *gorm.DB) *apiHandler {
-	return &apiHandler{db: db}
+	return &apiHandler{db: db, users: service.NewUserService(db)}
 }
 
 type pageResult struct {
