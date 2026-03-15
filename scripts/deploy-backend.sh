@@ -7,9 +7,8 @@ SERVICE_NAME="${3:?service name is required}"
 SERVICE_USER="${4:?service user is required}"
 APP_PORT="${5:?app port is required}"
 DB_PATH="${6:?db path is required}"
-DATA_DIR="${7:?data dir is required}"
-JWT_SECRET="${8:?jwt secret is required}"
-CORS_ALLOW_ORIGIN="${9:-}"
+JWT_SECRET="${7:?jwt secret is required}"
+CORS_ALLOW_ORIGIN="${8:-}"
 
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 ENV_DIR="/etc/wack"
@@ -24,11 +23,6 @@ if [ -z "${DEPLOY_PATH}" ] || [ "${DEPLOY_PATH}" = "/" ]; then
   exit 1
 fi
 
-if [ -z "${DATA_DIR}" ] || [ "${DATA_DIR}" = "/" ]; then
-  echo "refuse to use an empty or root data dir" >&2
-  exit 1
-fi
-
 run_root() {
   if [ "$(id -u)" -eq 0 ]; then
     "$@"
@@ -37,7 +31,7 @@ run_root() {
   fi
 }
 
-run_root mkdir -p "${RELEASES_DIR}" "${DATA_DIR}" "${ENV_DIR}" "${NEW_RELEASE_DIR}"
+run_root mkdir -p "${RELEASES_DIR}" "${ENV_DIR}" "${NEW_RELEASE_DIR}"
 run_root install -m 0755 "${ARTIFACT_DIR}/wack-backend" "${NEW_RELEASE_DIR}/wack-backend"
 
 sed \
@@ -50,7 +44,6 @@ sed \
 
 cat <<EOF | run_root tee "${ENV_FILE}" >/dev/null
 WACK_PORT=${APP_PORT}
-WACK_DATA_DIR=${DATA_DIR}
 WACK_DB_PATH=${DB_PATH}
 WACK_JWT_SECRET=${JWT_SECRET}
 WACK_CORS_ALLOW_ORIGIN=${CORS_ALLOW_ORIGIN}

@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -24,10 +23,6 @@ func New() (*App, error) {
 	db, err := database.OpenAndMigrate(cfg.DatabasePath)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
-	}
-
-	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-		return nil, fmt.Errorf("ensure data dir: %w", err)
 	}
 
 	router, err := httpserver.NewRouter(cfg, db)

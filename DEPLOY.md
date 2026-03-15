@@ -11,7 +11,6 @@
 - `BACKEND_SERVICE_USER`
 - `BACKEND_PORT`
 - `WACK_DB_PATH`
-- `WACK_DATA_DIR`
 - `WACK_JWT_SECRET`
 - `WACK_CORS_ALLOW_ORIGIN`
 
@@ -22,7 +21,6 @@
 - `BACKEND_SERVICE_USER=root`
 - `BACKEND_PORT=8080`
 - `WACK_DB_PATH=/root/wack_db/wack.db`
-- `WACK_DATA_DIR=/srv/wack-backend/data`
 - `WACK_CORS_ALLOW_ORIGIN=http://8.159.159.150`
 
 ## What the workflow does

@@ -17,6 +17,5 @@
 | `BACKEND_SERVICE_USER` | `root` |
 | `BACKEND_PORT` | `8080` |
 | `WACK_DB_PATH` | `/root/wack_db/wack.db` |
-| `WACK_DATA_DIR` | `/srv/wack-backend/data` |
 | `WACK_JWT_SECRET` | `replace-with-a-random-secret` |
 | `WACK_CORS_ALLOW_ORIGIN` | `http://8.159.159.150` |
