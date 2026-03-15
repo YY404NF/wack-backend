@@ -13,19 +13,32 @@ import (
 )
 
 type apiHandler struct {
-	db    *gorm.DB
-	users *service.UserService
+	db         *gorm.DB
+	users      *service.UserService
+	classes    *service.ClassService
+	courses    *service.CourseService
+	freeTimes  *service.FreeTimeService
+	attendance *service.AttendanceService
+	logs       *service.LogService
 }
 
 func newAPIHandler(db *gorm.DB) *apiHandler {
-	return &apiHandler{db: db, users: service.NewUserService(db)}
+	return &apiHandler{
+		db:         db,
+		users:      service.NewUserService(db),
+		classes:    service.NewClassService(db),
+		courses:    service.NewCourseService(db),
+		freeTimes:  service.NewFreeTimeService(db),
+		attendance: service.NewAttendanceService(db),
+		logs:       service.NewLogService(db),
+	}
 }
 
-type pageResult struct {
-	Items    interface{} `json:"items"`
-	Page     int         `json:"page"`
-	PageSize int         `json:"page_size"`
-	Total    int64       `json:"total"`
+type pageResult[T any] struct {
+	Items    []T   `json:"items"`
+	Page     int   `json:"page"`
+	PageSize int   `json:"page_size"`
+	Total    int64 `json:"total"`
 }
 
 func parsePage(c *gin.Context) (int, int) {
@@ -40,7 +53,7 @@ func parsePage(c *gin.Context) (int, int) {
 	return page, pageSize
 }
 
-func paginate(query *gorm.DB, page, pageSize int, out interface{}) (int64, error) {
+func paginate[T any](query *gorm.DB, page, pageSize int, out *[]T) (int64, error) {
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return 0, err

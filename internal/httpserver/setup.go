@@ -3,6 +3,7 @@ package httpserver
 import (
 	"github.com/gin-gonic/gin"
 
+	"wack-backend/internal/httpserver/dto"
 	"wack-backend/internal/service"
 )
 
@@ -19,11 +20,7 @@ func (h *authHandler) setupStatus(c *gin.Context) {
 }
 
 func (h *authHandler) initializeSystem(c *gin.Context) {
-	var req struct {
-		StudentID string `json:"student_id" binding:"required"`
-		RealName  string `json:"real_name" binding:"required"`
-		Password  string `json:"password" binding:"required,min=6"`
-	}
+	var req dto.InitializeSystemRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
 		return

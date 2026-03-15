@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"wack-backend/internal/config"
+	"wack-backend/internal/httpserver/dto"
 	"wack-backend/internal/service"
 )
 
@@ -31,10 +32,7 @@ func (h *authHandler) login(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		StudentID string `json:"student_id" binding:"required"`
-		Password  string `json:"password" binding:"required"`
-	}
+	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
 		return
@@ -87,10 +85,7 @@ func (h *authHandler) changePassword(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		OldPassword string `json:"old_password" binding:"required"`
-		NewPassword string `json:"new_password" binding:"required,min=6"`
-	}
+	var req dto.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
 		return
@@ -117,10 +112,7 @@ func (h *authHandler) updateProfile(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		StudentID string `json:"student_id" binding:"required"`
-		RealName  string `json:"real_name" binding:"required"`
-	}
+	var req dto.UpdateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
 		return

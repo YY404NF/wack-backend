@@ -3,6 +3,8 @@ package httpserver
 import (
 	"github.com/gin-gonic/gin"
 
+	"wack-backend/internal/httpserver/dto"
+	"wack-backend/internal/model"
 	"wack-backend/internal/service"
 )
 
@@ -20,18 +22,11 @@ func (h *apiHandler) listUsers(c *gin.Context) {
 		return
 	}
 
-	ok(c, pageResult{Items: users, Page: page, PageSize: pageSize, Total: total})
+	ok(c, pageResult[model.User]{Items: users, Page: page, PageSize: pageSize, Total: total})
 }
 
 func (h *apiHandler) createUser(c *gin.Context) {
-	var req struct {
-		StudentID string   `json:"student_id" binding:"required"`
-		RealName  string   `json:"real_name" binding:"required"`
-		Password  string   `json:"password" binding:"required,min=6"`
-		Role      int      `json:"role" binding:"required"`
-		Status    int      `json:"status"`
-		ClassIDs  []uint64 `json:"class_ids"`
-	}
+	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
 		return
@@ -62,13 +57,7 @@ func (h *apiHandler) getUser(c *gin.Context) {
 }
 
 func (h *apiHandler) updateUser(c *gin.Context) {
-	var req struct {
-		StudentID string   `json:"student_id" binding:"required"`
-		RealName  string   `json:"real_name" binding:"required"`
-		Role      int      `json:"role" binding:"required"`
-		Status    int      `json:"status" binding:"required"`
-		ClassIDs  []uint64 `json:"class_ids"`
-	}
+	var req dto.UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
 		return
@@ -102,9 +91,7 @@ func (h *apiHandler) updateUser(c *gin.Context) {
 func (h *apiHandler) resetUserPassword(c *gin.Context) {
 	current, _ := currentUser(c)
 
-	var req struct {
-		NewPassword string `json:"new_password" binding:"required,min=6"`
-	}
+	var req dto.ResetUserPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
 		return
@@ -127,9 +114,7 @@ func (h *apiHandler) resetUserPassword(c *gin.Context) {
 func (h *apiHandler) updateUserStatus(c *gin.Context) {
 	current, _ := currentUser(c)
 
-	var req struct {
-		Status int `json:"status" binding:"required"`
-	}
+	var req dto.UpdateUserStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
 		return
@@ -152,9 +137,7 @@ func (h *apiHandler) updateUserStatus(c *gin.Context) {
 func (h *apiHandler) updateUserRole(c *gin.Context) {
 	current, _ := currentUser(c)
 
-	var req struct {
-		Role int `json:"role" binding:"required"`
-	}
+	var req dto.UpdateUserRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
 		return
