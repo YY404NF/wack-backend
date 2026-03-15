@@ -1,9 +1,6 @@
 package httpserver
 
 import (
-	"errors"
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,12 +11,6 @@ import (
 	"wack-backend/internal/config"
 	"wack-backend/internal/model"
 )
-
-type jwtClaims struct {
-	StudentID string `json:"student_id"`
-	Role      int    `json:"role"`
-	jwt.RegisteredClaims
-}
 
 type authHandler struct {
 	cfg config.Config
@@ -64,7 +55,7 @@ func (h *authHandler) login(c *gin.Context) {
 		return
 	}
 
-	token, err := h.signToken(user.StudentID, user.Role)
+	token, err := h.signToken(user.ID, user.Role)
 	if err != nil {
 		fail(c, 500, "sign token failed")
 		return
@@ -73,6 +64,7 @@ func (h *authHandler) login(c *gin.Context) {
 	ok(c, gin.H{
 		"token": token,
 		"user": gin.H{
+			"id":         user.ID,
 			"student_id": user.StudentID,
 			"real_name":  user.RealName,
 			"role":       user.Role,
@@ -107,7 +99,7 @@ func (h *authHandler) changePassword(c *gin.Context) {
 	}
 
 	var dbUser model.User
-	if err := h.db.First(&dbUser, "student_id = ?", user.StudentID).Error; err != nil {
+	if err := h.db.First(&dbUser, user.ID).Error; err != nil {
 		fail(c, 404, "user not found")
 		return
 	}
@@ -129,10 +121,47 @@ func (h *authHandler) changePassword(c *gin.Context) {
 	ok(c, gin.H{})
 }
 
-func (h *authHandler) signToken(studentID string, role int) (string, error) {
+func (h *authHandler) updateProfile(c *gin.Context) {
+	user, exists := currentUser(c)
+	if !exists {
+		fail(c, 401, "unauthorized")
+		return
+	}
+
+	var req struct {
+		StudentID string `json:"student_id" binding:"required"`
+		RealName  string `json:"real_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, 400, "invalid request")
+		return
+	}
+
+	var dbUser model.User
+	if err := h.db.First(&dbUser, user.ID).Error; err != nil {
+		fail(c, 404, "user not found")
+		return
+	}
+
+	if err := h.db.Model(&dbUser).Updates(map[string]interface{}{
+		"student_id": req.StudentID,
+		"real_name":  req.RealName,
+	}).Error; err != nil {
+		fail(c, 400, "update profile failed")
+		return
+	}
+
+	if err := h.db.First(&dbUser, user.ID).Error; err != nil {
+		fail(c, 500, "reload profile failed")
+		return
+	}
+	ok(c, dbUser)
+}
+
+func (h *authHandler) signToken(userID uint64, role int) (string, error) {
 	claims := jwtClaims{
-		StudentID: studentID,
-		Role:      role,
+		UserID: userID,
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -140,85 +169,4 @@ func (h *authHandler) signToken(studentID string, role int) (string, error) {
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(h.cfg.JWTSecret))
-}
-
-func authMiddleware(cfg config.Config, db *gorm.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			fail(c, 401, "missing authorization header")
-			c.Abort()
-			return
-		}
-		tokenString := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer"))
-		if tokenString == authHeader {
-			fail(c, 401, "invalid authorization header")
-			c.Abort()
-			return
-		}
-
-		token, err := jwt.ParseWithClaims(tokenString, &jwtClaims{}, func(token *jwt.Token) (interface{}, error) {
-			if token.Method != jwt.SigningMethodHS256 {
-				return nil, errors.New("unexpected signing method")
-			}
-			return []byte(cfg.JWTSecret), nil
-		})
-		if err != nil || !token.Valid {
-			fail(c, 401, "invalid token")
-			c.Abort()
-			return
-		}
-
-		claims, okCast := token.Claims.(*jwtClaims)
-		if !okCast {
-			fail(c, 401, "invalid token claims")
-			c.Abort()
-			return
-		}
-
-		var user model.User
-		if err := db.First(&user, "student_id = ?", claims.StudentID).Error; err != nil {
-			fail(c, 401, "user not found")
-			c.Abort()
-			return
-		}
-		if user.Status != model.UserStatusActive {
-			fail(c, 403, "user is frozen")
-			c.Abort()
-			return
-		}
-
-		c.Set("currentUser", user)
-		c.Next()
-	}
-}
-
-func requireRole(roles ...int) gin.HandlerFunc {
-	allowed := make(map[int]struct{}, len(roles))
-	for _, role := range roles {
-		allowed[role] = struct{}{}
-	}
-	return func(c *gin.Context) {
-		user, exists := currentUser(c)
-		if !exists {
-			fail(c, 401, "unauthorized")
-			c.Abort()
-			return
-		}
-		if _, ok := allowed[user.Role]; !ok {
-			fail(c, 403, fmt.Sprintf("role %d is not allowed", user.Role))
-			c.Abort()
-			return
-		}
-		c.Next()
-	}
-}
-
-func currentUser(c *gin.Context) (model.User, bool) {
-	value, exists := c.Get("currentUser")
-	if !exists {
-		return model.User{}, false
-	}
-	user, ok := value.(model.User)
-	return user, ok
 }

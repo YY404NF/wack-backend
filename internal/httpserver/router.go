@@ -30,6 +30,7 @@ func NewRouter(cfg config.Config, db *gorm.DB) (*gin.Engine, error) {
 		protected.Use(authMiddleware(cfg, db))
 		protected.GET("/auth/me", authHandler.me)
 		protected.POST("/auth/change-password", authHandler.changePassword)
+		protected.PUT("/auth/profile", authHandler.updateProfile)
 
 		protected.GET("/free-times", apiHandler.listFreeTimes)
 		protected.POST("/free-times", apiHandler.createFreeTime)
@@ -42,6 +43,7 @@ func NewRouter(cfg config.Config, db *gorm.DB) (*gin.Engine, error) {
 		admin.POST("/users", apiHandler.createUser)
 		admin.GET("/users/:student_id", apiHandler.getUser)
 		admin.PUT("/users/:student_id", apiHandler.updateUser)
+		admin.PATCH("/users/:student_id/password", apiHandler.resetUserPassword)
 		admin.PATCH("/users/:student_id/status", apiHandler.updateUserStatus)
 		admin.PATCH("/users/:student_id/role", apiHandler.updateUserRole)
 
