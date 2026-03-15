@@ -1,0 +1,15 @@
+[Unit]
+Description=__SERVICE_NAME__
+After=network.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+WorkingDirectory=__WORKING_DIRECTORY__
+EnvironmentFile=__ENV_FILE__
+ExecStart=__EXEC_START__
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
