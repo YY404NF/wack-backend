@@ -31,6 +31,16 @@ func newAuthHandler(cfg config.Config, db *gorm.DB) *authHandler {
 }
 
 func (h *authHandler) login(c *gin.Context) {
+	initialized, err := h.hasAnyAdmin()
+	if err != nil {
+		fail(c, 500, "load setup status failed")
+		return
+	}
+	if !initialized {
+		fail(c, 403, "system is not initialized")
+		return
+	}
+
 	var req struct {
 		StudentID string `json:"student_id" binding:"required"`
 		Password  string `json:"password" binding:"required"`

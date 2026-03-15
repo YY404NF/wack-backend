@@ -19,6 +19,10 @@ func NewRouter(cfg config.Config, db *gorm.DB) (*gin.Engine, error) {
 
 	api := router.Group("/api")
 	{
+		setupGroup := api.Group("/setup")
+		setupGroup.GET("/status", authHandler.setupStatus)
+		setupGroup.POST("/initialize", authHandler.initializeSystem)
+
 		authGroup := api.Group("/auth")
 		authGroup.POST("/login", authHandler.login)
 

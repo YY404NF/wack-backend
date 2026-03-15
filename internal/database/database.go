@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -46,33 +45,5 @@ func OpenAndMigrate(databasePath string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
 
-	if err := seedAdmin(db); err != nil {
-		return nil, fmt.Errorf("seed admin: %w", err)
-	}
-
 	return db, nil
-}
-
-func seedAdmin(db *gorm.DB) error {
-	var count int64
-	if err := db.Model(&model.User{}).Count(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-
-	admin := model.User{
-		StudentID:    "admin",
-		PasswordHash: string(passwordHash),
-		RealName:     "系统管理员",
-		Role:         model.RoleAdmin,
-		Status:       model.UserStatusActive,
-	}
-	return db.Create(&admin).Error
 }
