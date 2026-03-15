@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -62,6 +63,11 @@ func (s *AuthService) Authenticate(studentID, password string) (model.User, erro
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		return model.User{}, ErrInvalidCredentials
 	}
+	now := time.Now()
+	if err := s.db.Model(&user).Update("last_login_at", now).Error; err != nil {
+		return model.User{}, err
+	}
+	user.LastLoginAt = &now
 	return user, nil
 }
 

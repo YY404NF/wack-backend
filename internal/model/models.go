@@ -16,14 +16,15 @@ const (
 )
 
 type User struct {
-	ID           uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	StudentID    string    `gorm:"column:student_id;size:32;not null;uniqueIndex" json:"student_id"`
-	PasswordHash string    `gorm:"column:password_hash;size:255;not null" json:"-"`
-	RealName     string    `gorm:"column:real_name;size:50;not null" json:"real_name"`
-	Role         int       `gorm:"column:role;not null;index:idx_role_status" json:"role"`
-	Status       int       `gorm:"column:status;not null;default:1;index:idx_role_status" json:"status"`
-	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
-	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+	ID           uint64     `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	StudentID    string     `gorm:"column:student_id;size:32;not null;uniqueIndex" json:"student_id"`
+	PasswordHash string     `gorm:"column:password_hash;size:255;not null" json:"-"`
+	RealName     string     `gorm:"column:real_name;size:50;not null" json:"real_name"`
+	Role         int        `gorm:"column:role;not null;index:idx_role_status" json:"role"`
+	Status       int        `gorm:"column:status;not null;default:1;index:idx_role_status" json:"status"`
+	LastLoginAt  *time.Time `gorm:"column:last_login_at" json:"last_login_at"`
+	CreatedAt    time.Time  `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+	UpdatedAt    time.Time  `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
 
 func (User) TableName() string { return "user" }
