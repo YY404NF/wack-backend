@@ -22,7 +22,7 @@ func (h *apiHandler) updateSystemSetting(c *gin.Context) {
 		return
 	}
 
-	setting, err := h.systemSettings.UpdateSystemSetting(req.CurrentTermStartDate, req.CurrentSchedule)
+	setting, err := h.systemSettings.UpdateSystemSetting(req.CurrentTermStartDate)
 	if err != nil {
 		fail(c, 400, "update system setting failed")
 		return

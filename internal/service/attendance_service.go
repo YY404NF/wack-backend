@@ -29,8 +29,8 @@ func (s *AttendanceService) AttendanceResults(weekNo, courseID, status string, p
 	return s.attendance.AttendanceResults(weekNo, courseID, status, page, pageSize)
 }
 
-func (s *AttendanceService) AvailableSessions(weekday int) ([]query.SessionWithCourse, error) {
-	return s.attendance.AvailableSessions(weekday)
+func (s *AttendanceService) AvailableSessions(weekday, weekNo int) ([]query.SessionWithCourse, error) {
+	return s.attendance.AvailableSessions(weekday, weekNo)
 }
 
 func (s *AttendanceService) AttendanceDetails(checkID uint64) ([]query.AttendanceDetailItem, error) {

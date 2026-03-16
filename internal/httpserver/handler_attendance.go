@@ -41,12 +41,24 @@ func (h *apiHandler) adminFreeTimeCalendar(c *gin.Context) {
 }
 
 func (h *apiHandler) studentAvailableCourses(c *gin.Context) {
-	weekday := int(time.Now().Weekday())
+	now := time.Now()
+	weekday := int(now.Weekday())
 	if weekday == 0 {
 		weekday = 7
 	}
 
-	sessions, err := h.attendance.AvailableSessions(weekday)
+	setting, err := h.systemSettings.GetSystemSetting()
+	if err != nil {
+		fail(c, 500, "load system settings failed")
+		return
+	}
+	currentWeek, hasWeek := academicWeek(setting.CurrentTermStartDate, now)
+	if !hasWeek {
+		ok(c, []query.AvailableCourseItem{})
+		return
+	}
+
+	sessions, err := h.attendance.AvailableSessions(weekday, currentWeek)
 	if err != nil {
 		fail(c, 500, "load available courses failed")
 		return
@@ -54,7 +66,10 @@ func (h *apiHandler) studentAvailableCourses(c *gin.Context) {
 
 	items := make([]query.AvailableCourseItem, 0, len(sessions))
 	for _, session := range sessions {
-		deadline, err := h.attendanceDeadline(session.CourseSession, time.Now())
+		if !h.withinDeadline(session.CourseSession, now) {
+			continue
+		}
+		deadline, err := h.attendanceDeadline(session.CourseSession, now)
 		if err != nil {
 			continue
 		}
@@ -69,7 +84,7 @@ func (h *apiHandler) studentAvailableCourses(c *gin.Context) {
 			BuildingName:      session.BuildingName,
 			RoomName:          session.RoomName,
 			StartedAt:         session.StartedAt,
-			CanEnter:          time.Now().Before(deadline),
+			CanEnter:          true,
 			EnterDeadline:     deadline.Format("2006-01-02 15:04:05"),
 			AttendanceCheckID: session.AttendanceCheckID,
 		})

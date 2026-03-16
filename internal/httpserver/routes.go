@@ -24,6 +24,7 @@ func mountFreeTimeRoutes(protected *gin.RouterGroup, apiHandler *apiHandler) {
 	protected.POST("/free-times", apiHandler.createFreeTime)
 	protected.PUT("/free-times/:id", apiHandler.updateFreeTime)
 	protected.DELETE("/free-times/:id", apiHandler.deleteFreeTime)
+	protected.GET("/system-settings", apiHandler.getSystemSetting)
 }
 
 func mountUserRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {

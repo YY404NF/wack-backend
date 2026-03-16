@@ -151,13 +151,13 @@ func (q *AttendanceQuery) AttendanceResults(weekNo, courseID, status string, pag
 	return items, total, nil
 }
 
-func (q *AttendanceQuery) AvailableSessions(weekday int) ([]SessionWithCourse, error) {
+func (q *AttendanceQuery) AvailableSessions(weekday, weekNo int) ([]SessionWithCourse, error) {
 	var sessions []SessionWithCourse
 	err := q.db.Table("course_session").
 		Select("course_session.*, course.course_name, course.teacher_name, attendance_check.id AS attendance_check_id, attendance_check.started_at").
 		Joins("JOIN course ON course.id = course_session.course_id").
 		Joins("LEFT JOIN attendance_check ON attendance_check.course_session_id = course_session.id").
-		Where("course_session.weekday = ?", weekday).
+		Where("course_session.weekday = ? AND course_session.week_no = ?", weekday, weekNo).
 		Order("course_session.section ASC").
 		Scan(&sessions).Error
 	return sessions, err
