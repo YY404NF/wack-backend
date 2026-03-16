@@ -38,7 +38,6 @@ func (h *apiHandler) createUser(c *gin.Context) {
 		Password:  req.Password,
 		Role:      req.Role,
 		Status:    req.Status,
-		ClassIDs:  req.ClassIDs,
 	})
 	if err != nil {
 		fail(c, 400, "create user failed")
@@ -48,12 +47,12 @@ func (h *apiHandler) createUser(c *gin.Context) {
 }
 
 func (h *apiHandler) getUser(c *gin.Context) {
-	user, classes, err := h.users.GetUserWithClasses(c.Param("student_id"))
+	user, err := h.users.GetUser(c.Param("student_id"))
 	if err != nil {
 		fail(c, 404, "user not found")
 		return
 	}
-	ok(c, gin.H{"user": user, "class_relations": classes})
+	ok(c, user)
 }
 
 func (h *apiHandler) updateUser(c *gin.Context) {
@@ -64,12 +63,11 @@ func (h *apiHandler) updateUser(c *gin.Context) {
 	}
 
 	current, _ := currentUser(c)
-	user, classes, err := h.users.UpdateUser(current.ID, c.Param("student_id"), service.UpdateUserInput{
+	user, err := h.users.UpdateUser(current.ID, c.Param("student_id"), service.UpdateUserInput{
 		StudentID: req.StudentID,
 		RealName:  req.RealName,
 		Role:      req.Role,
 		Status:    req.Status,
-		ClassIDs:  req.ClassIDs,
 	})
 	if err != nil {
 		switch {
@@ -85,7 +83,7 @@ func (h *apiHandler) updateUser(c *gin.Context) {
 		return
 	}
 
-	ok(c, gin.H{"user": user, "class_relations": classes})
+	ok(c, user)
 }
 
 func (h *apiHandler) resetUserPassword(c *gin.Context) {

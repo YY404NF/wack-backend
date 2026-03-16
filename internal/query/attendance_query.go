@@ -31,8 +31,8 @@ type AttendanceResultItem struct {
 type AttendanceDetailItem struct {
 	ID                uint64     `json:"id"`
 	AttendanceCheckID uint64     `json:"attendance_check_id"`
-	UserID            uint64     `json:"user_id"`
 	StudentID         string     `json:"student_id"`
+	RealName          string     `json:"real_name"`
 	Status            int        `json:"status"`
 	StatusSetByUserID *uint64    `json:"status_set_by_user_id"`
 	StatusSetAt       *time.Time `json:"status_set_at"`
@@ -74,8 +74,8 @@ type AttendanceDetailLogItem struct {
 	ID                 uint64    `json:"id"`
 	AttendanceDetailID uint64    `json:"attendance_detail_id"`
 	AttendanceCheckID  uint64    `json:"attendance_check_id"`
-	UserID             uint64    `json:"user_id"`
 	StudentID          string    `json:"student_id"`
+	RealName           string    `json:"real_name"`
 	OperatorUserID     uint64    `json:"operator_user_id"`
 	OperatorStudentID  string    `json:"operator_student_id"`
 	OldStatus          *int      `json:"old_status"`
@@ -127,11 +127,10 @@ func (q *AttendanceQuery) DashboardSummary(weekNo, term, courseID string) (Atten
 
 func (q *AttendanceQuery) AttendanceResults(weekNo, courseID, status string, page, pageSize int) ([]AttendanceResultItem, int64, error) {
 	query := q.db.Table("attendance_detail").
-		Select("attendance_check.id AS attendance_check_id, attendance_detail.id AS attendance_detail_id, course.id AS course_id, course.course_name, course.teacher_name, course_session.week_no, course_session.session_no, user.student_id, attendance_detail.status").
+		Select("attendance_check.id AS attendance_check_id, attendance_detail.id AS attendance_detail_id, course.id AS course_id, course.course_name, course.teacher_name, course_session.week_no, course_session.session_no, attendance_detail.student_id, attendance_detail.status").
 		Joins("JOIN attendance_check ON attendance_check.id = attendance_detail.attendance_check_id").
 		Joins("JOIN course_session ON course_session.id = attendance_check.course_session_id").
-		Joins("JOIN course ON course.id = course_session.course_id").
-		Joins("JOIN user ON user.id = attendance_detail.user_id")
+		Joins("JOIN course ON course.id = course_session.course_id")
 	if courseID != "" {
 		query = query.Where("course.id = ?", courseID)
 	}
@@ -167,8 +166,7 @@ func (q *AttendanceQuery) AvailableSessions(weekday int) ([]SessionWithCourse, e
 func (q *AttendanceQuery) AttendanceCheckDetails(checkID uint64) ([]AttendanceDetailItem, error) {
 	var details []AttendanceDetailItem
 	err := q.db.Table("attendance_detail").
-		Select("attendance_detail.id, attendance_detail.attendance_check_id, attendance_detail.user_id, user.student_id, attendance_detail.status, attendance_detail.status_set_by_user_id, attendance_detail.status_set_at").
-		Joins("JOIN user ON user.id = attendance_detail.user_id").
+		Select("attendance_detail.id, attendance_detail.attendance_check_id, attendance_detail.student_id, attendance_detail.real_name, attendance_detail.status, attendance_detail.status_set_by_user_id, attendance_detail.status_set_at").
 		Where("attendance_check_id = ?", checkID).
 		Order("attendance_detail.id ASC").
 		Scan(&details).Error
@@ -178,8 +176,7 @@ func (q *AttendanceQuery) AttendanceCheckDetails(checkID uint64) ([]AttendanceDe
 func (q *AttendanceQuery) AttendanceDetailLogs(detailID uint64) ([]AttendanceDetailLogItem, error) {
 	var logs []AttendanceDetailLogItem
 	err := q.db.Table("attendance_detail_log").
-		Select("attendance_detail_log.id, attendance_detail_log.attendance_detail_id, attendance_detail_log.attendance_check_id, attendance_detail_log.user_id, target_user.student_id, attendance_detail_log.operator_user_id, operator_user.student_id AS operator_student_id, attendance_detail_log.old_status, attendance_detail_log.new_status, attendance_detail_log.operation_type, attendance_detail_log.operated_at, attendance_detail_log.created_at").
-		Joins("JOIN user AS target_user ON target_user.id = attendance_detail_log.user_id").
+		Select("attendance_detail_log.id, attendance_detail_log.attendance_detail_id, attendance_detail_log.attendance_check_id, attendance_detail_log.student_id, attendance_detail_log.real_name, attendance_detail_log.operator_user_id, operator_user.student_id AS operator_student_id, attendance_detail_log.old_status, attendance_detail_log.new_status, attendance_detail_log.operation_type, attendance_detail_log.operated_at, attendance_detail_log.created_at").
 		Joins("JOIN user AS operator_user ON operator_user.id = attendance_detail_log.operator_user_id").
 		Where("attendance_detail_log.attendance_detail_id = ?", detailID).
 		Order("attendance_detail_log.operated_at DESC").

@@ -31,8 +31,9 @@ func OpenAndMigrate(databasePath string) (*gorm.DB, error) {
 	if err := db.AutoMigrate(
 		&model.User{},
 		&model.Class{},
-		&model.UserClass{},
+		&model.ClassStudent{},
 		&model.StudentFreeTime{},
+		&model.SystemSetting{},
 		&model.Course{},
 		&model.CourseStudent{},
 		&model.CourseClass{},

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"fmt"
 	"strings"
 
 	"gorm.io/gorm"
@@ -19,26 +18,8 @@ func NewCourseService(db *gorm.DB) *CourseService {
 	return &CourseService{db: db, courses: query.NewCourseQuery(db)}
 }
 
-func (s *CourseService) ListCourses(term, teacher, keyword string, page, pageSize int) ([]model.Course, int64, error) {
-	queryDB := s.db.Model(&model.Course{})
-	if term != "" {
-		queryDB = queryDB.Where("term = ?", term)
-	}
-	if teacher != "" {
-		queryDB = queryDB.Where("teacher_name LIKE ?", "%"+teacher+"%")
-	}
-	if keyword = strings.TrimSpace(keyword); keyword != "" {
-		queryDB = queryDB.Where("course_name LIKE ?", "%"+keyword+"%")
-	}
-	var total int64
-	if err := queryDB.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	var items []model.Course
-	if err := queryDB.Order("id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&items).Error; err != nil {
-		return nil, 0, err
-	}
-	return items, total, nil
+func (s *CourseService) ListCourses(term, teacher, keyword string, page, pageSize int) ([]query.CourseListItem, int64, error) {
+	return s.courses.ListCourses(term, teacher, strings.TrimSpace(keyword), page, pageSize)
 }
 
 func (s *CourseService) CreateCourse(course model.Course) (model.Course, error) {
@@ -120,29 +101,25 @@ func (s *CourseService) DeleteCourse(id uint64) error {
 	})
 }
 
-func (s *CourseService) ReplaceCourseStudents(id uint64, studentIDs []string, users []model.User) error {
+func (s *CourseService) ReplaceCourseStudents(id uint64, students []model.CourseStudent) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("course_id = ?", id).Delete(&model.CourseStudent{}).Error; err != nil {
 			return err
 		}
-		userIDByStudentID := make(map[string]uint64, len(users))
-		for _, user := range users {
-			userIDByStudentID[user.StudentID] = user.ID
-		}
-		relations := make([]model.CourseStudent, 0, len(studentIDs))
-		for _, studentID := range studentIDs {
-			userID, ok := userIDByStudentID[studentID]
-			if !ok {
-				return fmt.Errorf("student %s not found", studentID)
-			}
-			relations = append(relations, model.CourseStudent{CourseID: id, UserID: userID})
+		relations := make([]model.CourseStudent, 0, len(students))
+		for _, student := range students {
+			relations = append(relations, model.CourseStudent{
+				CourseID:  id,
+				StudentID: student.StudentID,
+				RealName:  student.RealName,
+			})
 		}
 		if len(relations) > 0 {
 			if err := tx.Create(&relations).Error; err != nil {
 				return err
 			}
 		}
-		return tx.Model(&model.Course{}).Where("id = ?", id).Update("attendance_student_count", len(studentIDs)).Error
+		return tx.Model(&model.Course{}).Where("id = ?", id).Update("attendance_student_count", len(students)).Error
 	})
 }
 

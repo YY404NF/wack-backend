@@ -34,22 +34,23 @@ type Class struct {
 	ClassName    string    `gorm:"column:class_name;size:100;not null" json:"class_name"`
 	Grade        int       `gorm:"column:grade;not null;index:idx_grade_major" json:"grade"`
 	MajorName    string    `gorm:"column:major_name;size:100;not null;index:idx_grade_major" json:"major_name"`
-	StudentCount int64     `gorm:"-" json:"student_count"`
+	StudentCount int64     `gorm:"column:student_count;->" json:"student_count"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
 
 func (Class) TableName() string { return "class" }
 
-type UserClass struct {
+type ClassStudent struct {
 	ID        uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	UserID    uint64    `gorm:"column:user_id;not null;uniqueIndex:uk_user_class" json:"user_id"`
-	ClassID   uint64    `gorm:"column:class_id;not null;uniqueIndex:uk_user_class;index:idx_user_class_class_id" json:"class_id"`
+	ClassID   uint64    `gorm:"column:class_id;not null;uniqueIndex:uk_class_student;index:idx_class_student_class_id" json:"class_id"`
+	StudentID string    `gorm:"column:student_id;size:32;not null;uniqueIndex:uk_class_student;index:idx_class_student_student_id" json:"student_id"`
+	RealName  string    `gorm:"column:real_name;size:50;not null" json:"real_name"`
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
 
-func (UserClass) TableName() string { return "user_class" }
+func (ClassStudent) TableName() string { return "class_student" }
 
 type StudentFreeTime struct {
 	ID        uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
@@ -64,8 +65,18 @@ type StudentFreeTime struct {
 
 func (StudentFreeTime) TableName() string { return "student_free_time" }
 
+type SystemSetting struct {
+	ID                   uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	CurrentTermStartDate string    `gorm:"column:current_term_start_date;size:10;not null" json:"current_term_start_date"`
+	CurrentSchedule      string    `gorm:"column:current_schedule;size:20;not null" json:"current_schedule"`
+	CreatedAt            time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+	UpdatedAt            time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
+}
+
+func (SystemSetting) TableName() string { return "system_setting" }
+
 type Course struct {
-	ID                     uint64    `gorm:"column:id;primaryKey" json:"id"`
+	ID                     uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	Term                   string    `gorm:"column:term;size:20;not null;index:idx_term_teacher;index:idx_term_course_name" json:"term"`
 	CourseName             string    `gorm:"column:course_name;size:100;not null;index:idx_term_course_name" json:"course_name"`
 	TeacherName            string    `gorm:"column:teacher_name;size:50;not null;index:idx_term_teacher" json:"teacher_name"`
@@ -78,8 +89,9 @@ func (Course) TableName() string { return "course" }
 
 type CourseStudent struct {
 	ID        uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	CourseID  uint64    `gorm:"column:course_id;not null;uniqueIndex:uk_course_student" json:"course_id"`
-	UserID    uint64    `gorm:"column:user_id;not null;uniqueIndex:uk_course_student;index:idx_course_student_user_id" json:"user_id"`
+	CourseID  uint64    `gorm:"column:course_id;not null;uniqueIndex:uk_course_student_ref" json:"course_id"`
+	StudentID string    `gorm:"column:student_id;size:32;not null;uniqueIndex:uk_course_student_ref;index:idx_course_student_student_id" json:"student_id"`
+	RealName  string    `gorm:"column:real_name;size:50;not null" json:"real_name"`
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
@@ -124,9 +136,10 @@ func (AttendanceCheck) TableName() string { return "attendance_check" }
 
 type AttendanceDetail struct {
 	ID                uint64     `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	AttendanceCheckID uint64     `gorm:"column:attendance_check_id;not null;uniqueIndex:uk_check_user" json:"attendance_check_id"`
-	UserID            uint64     `gorm:"column:user_id;not null;uniqueIndex:uk_check_user;index:idx_user_status" json:"user_id"`
-	Status            int        `gorm:"column:status;not null;default:0;index:idx_user_status;index:idx_status" json:"status"`
+	AttendanceCheckID uint64     `gorm:"column:attendance_check_id;not null;uniqueIndex:uk_check_student" json:"attendance_check_id"`
+	StudentID         string     `gorm:"column:student_id;size:32;not null;uniqueIndex:uk_check_student;index:idx_student_status" json:"student_id"`
+	RealName          string     `gorm:"column:real_name;size:50;not null" json:"real_name"`
+	Status            int        `gorm:"column:status;not null;default:0;index:idx_student_status;index:idx_status" json:"status"`
 	StatusSetByUserID *uint64    `gorm:"column:status_set_by_user_id;index:idx_status_set_by" json:"status_set_by_user_id"`
 	StatusSetAt       *time.Time `gorm:"column:status_set_at" json:"status_set_at"`
 	UpdatedAt         time.Time  `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
@@ -136,16 +149,17 @@ type AttendanceDetail struct {
 func (AttendanceDetail) TableName() string { return "attendance_detail" }
 
 type AttendanceDetailLog struct {
-	ID                 uint64    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	AttendanceDetailID uint64    `gorm:"column:attendance_detail_id;not null" json:"attendance_detail_id"`
-	AttendanceCheckID  uint64    `gorm:"column:attendance_check_id;not null;index:idx_check_operated_at" json:"attendance_check_id"`
-	UserID             uint64    `gorm:"column:user_id;not null;index:idx_user_operated_at" json:"user_id"`
-	OperatorUserID     uint64    `gorm:"column:operator_user_id;not null;index:idx_operator_operated_at" json:"operator_user_id"`
-	OldStatus          *int      `gorm:"column:old_status" json:"old_status"`
-	NewStatus          int       `gorm:"column:new_status;not null" json:"new_status"`
-	OperationType      string    `gorm:"column:operation_type;size:50;not null" json:"operation_type"`
-	OperatedAt         time.Time `gorm:"column:operated_at;not null;index:idx_check_operated_at;index:idx_user_operated_at;index:idx_operator_operated_at" json:"operated_at"`
-	CreatedAt          time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+	ID                 uint64     `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	AttendanceDetailID uint64     `gorm:"column:attendance_detail_id;not null" json:"attendance_detail_id"`
+	AttendanceCheckID  uint64     `gorm:"column:attendance_check_id;not null;index:idx_check_operated_at" json:"attendance_check_id"`
+	StudentID          string     `gorm:"column:student_id;size:32;not null;index:idx_student_operated_at" json:"student_id"`
+	RealName           string     `gorm:"column:real_name;size:50;not null" json:"real_name"`
+	OperatorUserID     uint64     `gorm:"column:operator_user_id;not null;index:idx_operator_operated_at" json:"operator_user_id"`
+	OldStatus          *int       `gorm:"column:old_status" json:"old_status"`
+	NewStatus          int        `gorm:"column:new_status;not null" json:"new_status"`
+	OperationType      string     `gorm:"column:operation_type;size:50;not null" json:"operation_type"`
+	OperatedAt         time.Time  `gorm:"column:operated_at;not null;index:idx_check_operated_at;index:idx_student_operated_at;index:idx_operator_operated_at" json:"operated_at"`
+	CreatedAt          time.Time  `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 }
 
 func (AttendanceDetailLog) TableName() string { return "attendance_detail_log" }

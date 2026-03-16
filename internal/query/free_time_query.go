@@ -11,6 +11,7 @@ type FreeTimeItem struct {
 	Term      string    `json:"term"`
 	UserID    uint64    `json:"user_id"`
 	StudentID string    `json:"student_id"`
+	RealName  string    `json:"real_name"`
 	Weekday   int       `json:"weekday"`
 	Section   int       `json:"section"`
 	FreeWeeks string    `json:"free_weeks"`
@@ -28,7 +29,7 @@ func NewFreeTimeQuery(db *gorm.DB) *FreeTimeQuery {
 
 func (q *FreeTimeQuery) List(term, studentID string, userID uint64, restrictToUser bool, page, pageSize int) ([]FreeTimeItem, int64, error) {
 	query := q.db.Table("student_free_time").
-		Select("student_free_time.id, student_free_time.term, student_free_time.user_id, user.student_id, student_free_time.weekday, student_free_time.section, student_free_time.free_weeks, student_free_time.created_at, student_free_time.updated_at").
+		Select("student_free_time.id, student_free_time.term, student_free_time.user_id, user.student_id, user.real_name, student_free_time.weekday, student_free_time.section, student_free_time.free_weeks, student_free_time.created_at, student_free_time.updated_at").
 		Joins("JOIN user ON user.id = student_free_time.user_id")
 	if term != "" {
 		query = query.Where("student_free_time.term = ?", term)
@@ -52,7 +53,7 @@ func (q *FreeTimeQuery) List(term, studentID string, userID uint64, restrictToUs
 
 func (q *FreeTimeQuery) Calendar(term string) ([]FreeTimeItem, error) {
 	query := q.db.Table("student_free_time").
-		Select("student_free_time.id, student_free_time.term, student_free_time.user_id, user.student_id, student_free_time.weekday, student_free_time.section, student_free_time.free_weeks, student_free_time.created_at, student_free_time.updated_at").
+		Select("student_free_time.id, student_free_time.term, student_free_time.user_id, user.student_id, user.real_name, student_free_time.weekday, student_free_time.section, student_free_time.free_weeks, student_free_time.created_at, student_free_time.updated_at").
 		Joins("JOIN user ON user.id = student_free_time.user_id")
 	if term != "" {
 		query = query.Where("student_free_time.term = ?", term)

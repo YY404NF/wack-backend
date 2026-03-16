@@ -7,6 +7,7 @@ import (
 
 	"wack-backend/internal/httpserver/dto"
 	"wack-backend/internal/model"
+	"wack-backend/internal/query"
 )
 
 func (h *apiHandler) listCourses(c *gin.Context) {
@@ -16,7 +17,7 @@ func (h *apiHandler) listCourses(c *gin.Context) {
 		fail(c, 500, "list courses failed")
 		return
 	}
-	ok(c, pageResult[model.Course]{Items: items, Page: page, PageSize: pageSize, Total: total})
+	ok(c, pageResult[query.CourseListItem]{Items: items, Page: page, PageSize: pageSize, Total: total})
 }
 
 func (h *apiHandler) createCourse(c *gin.Context) {
@@ -95,12 +96,14 @@ func (h *apiHandler) replaceCourseStudents(c *gin.Context) {
 		fail(c, 400, "invalid request")
 		return
 	}
-	users, err := h.findUsersByStudentIDs(req.StudentIDs)
-	if err != nil {
-		fail(c, 400, "replace course students failed")
-		return
+	students := make([]model.CourseStudent, 0, len(req.Students))
+	for _, item := range req.Students {
+		students = append(students, model.CourseStudent{
+			StudentID: item.StudentID,
+			RealName:  item.RealName,
+		})
 	}
-	if err := h.courses.ReplaceCourseStudents(id, req.StudentIDs, users); err != nil {
+	if err := h.courses.ReplaceCourseStudents(id, students); err != nil {
 		fail(c, 400, "replace course students failed")
 		return
 	}

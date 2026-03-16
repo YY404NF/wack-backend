@@ -44,8 +44,7 @@ func (q *LogQuery) AdminOperationLogs(page, pageSize int) ([]AdminOperationLogIt
 
 func (q *LogQuery) AttendanceDetailLogs(page, pageSize int) ([]AttendanceDetailLogItem, int64, error) {
 	query := q.db.Table("attendance_detail_log").
-		Select("attendance_detail_log.id, attendance_detail_log.attendance_detail_id, attendance_detail_log.attendance_check_id, attendance_detail_log.user_id, target_user.student_id, attendance_detail_log.operator_user_id, operator_user.student_id AS operator_student_id, attendance_detail_log.old_status, attendance_detail_log.new_status, attendance_detail_log.operation_type, attendance_detail_log.operated_at, attendance_detail_log.created_at").
-		Joins("JOIN user AS target_user ON target_user.id = attendance_detail_log.user_id").
+		Select("attendance_detail_log.id, attendance_detail_log.attendance_detail_id, attendance_detail_log.attendance_check_id, attendance_detail_log.student_id, attendance_detail_log.real_name, attendance_detail_log.operator_user_id, operator_user.student_id AS operator_student_id, attendance_detail_log.old_status, attendance_detail_log.new_status, attendance_detail_log.operation_type, attendance_detail_log.operated_at, attendance_detail_log.created_at").
 		Joins("JOIN user AS operator_user ON operator_user.id = attendance_detail_log.operator_user_id")
 
 	var total int64

@@ -3,7 +3,6 @@ package httpserver
 import (
 	"errors"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -13,24 +12,26 @@ import (
 )
 
 type apiHandler struct {
-	db         *gorm.DB
-	users      *service.UserService
-	classes    *service.ClassService
-	courses    *service.CourseService
-	freeTimes  *service.FreeTimeService
-	attendance *service.AttendanceService
-	logs       *service.LogService
+	db             *gorm.DB
+	users          *service.UserService
+	classes        *service.ClassService
+	courses        *service.CourseService
+	freeTimes      *service.FreeTimeService
+	systemSettings *service.SystemSettingService
+	attendance     *service.AttendanceService
+	logs           *service.LogService
 }
 
 func newAPIHandler(db *gorm.DB) *apiHandler {
 	return &apiHandler{
-		db:         db,
-		users:      service.NewUserService(db),
-		classes:    service.NewClassService(db),
-		courses:    service.NewCourseService(db),
-		freeTimes:  service.NewFreeTimeService(db),
-		attendance: service.NewAttendanceService(db),
-		logs:       service.NewLogService(db),
+		db:             db,
+		users:          service.NewUserService(db),
+		classes:        service.NewClassService(db),
+		courses:        service.NewCourseService(db),
+		freeTimes:      service.NewFreeTimeService(db),
+		systemSettings: service.NewSystemSettingService(db),
+		attendance:     service.NewAttendanceService(db),
+		logs:           service.NewLogService(db),
 	}
 }
 
@@ -85,46 +86,4 @@ func (h *apiHandler) findUsersByStudentIDs(studentIDs []string) ([]model.User, e
 	}
 	err := h.db.Where("student_id IN ?", studentIDs).Find(&users).Error
 	return users, err
-}
-
-func sectionEndTime(section int) (int, int, error) {
-	switch section {
-	case 1:
-		return 9, 35, nil
-	case 2:
-		return 11, 35, nil
-	case 3:
-		return 15, 35, nil
-	case 4:
-		return 17, 35, nil
-	case 5:
-		return 21, 35, nil
-	default:
-		return 0, 0, errors.New("invalid section")
-	}
-}
-
-func (h *apiHandler) attendanceDeadline(session model.CourseSession, now time.Time) (time.Time, error) {
-	currentWeekday := int(now.Weekday())
-	if currentWeekday == 0 {
-		currentWeekday = 7
-	}
-	weekdayDelta := session.Weekday - currentWeekday
-	if weekdayDelta < 0 {
-		weekdayDelta += 7
-	}
-	baseDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, weekdayDelta)
-	hour, minute, err := sectionEndTime(session.Section)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return time.Date(baseDate.Year(), baseDate.Month(), baseDate.Day(), hour, minute, 0, 0, now.Location()).Add(30 * time.Minute), nil
-}
-
-func (h *apiHandler) withinDeadline(session model.CourseSession, now time.Time) bool {
-	deadline, err := h.attendanceDeadline(session, now)
-	if err != nil {
-		return false
-	}
-	return now.Before(deadline)
 }

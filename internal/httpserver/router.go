@@ -32,6 +32,7 @@ func NewRouter(cfg config.Config, db *gorm.DB) (*gin.Engine, error) {
 		mountUserRoutes(admin, apiHandler)
 		mountClassRoutes(admin, apiHandler)
 		mountCourseRoutes(admin, apiHandler)
+		mountSystemSettingRoutes(admin, apiHandler)
 
 		student := protected.Group("")
 		student.Use(requireRole(2))

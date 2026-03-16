@@ -38,11 +38,16 @@ func mountUserRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 
 func mountClassRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 	admin.GET("/classes", apiHandler.listClasses)
+	admin.GET("/class-students", apiHandler.listClassStudentCandidates)
 	admin.POST("/classes", apiHandler.createClass)
 	admin.GET("/classes/:id", apiHandler.getClass)
 	admin.PUT("/classes/:id", apiHandler.updateClass)
 	admin.DELETE("/classes/:id", apiHandler.deleteClass)
 	admin.GET("/classes/:id/students", apiHandler.getClassStudents)
+	admin.POST("/classes/:id/students", apiHandler.createClassStudent)
+	admin.POST("/classes/:id/students/import", apiHandler.importClassStudents)
+	admin.PUT("/classes/:id/students/:student_id", apiHandler.updateClassStudent)
+	admin.DELETE("/classes/:id/students/:student_id", apiHandler.deleteClassStudent)
 }
 
 func mountCourseRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
@@ -55,6 +60,11 @@ func mountCourseRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 	admin.PUT("/courses/:id/classes", apiHandler.replaceCourseClasses)
 	admin.PUT("/courses/:id/sessions", apiHandler.replaceCourseSessions)
 	admin.GET("/admin/course-calendar", apiHandler.adminCourseCalendar)
+}
+
+func mountSystemSettingRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
+	admin.GET("/admin/system-settings", apiHandler.getSystemSetting)
+	admin.PUT("/admin/system-settings", apiHandler.updateSystemSetting)
 }
 
 func mountAttendanceRoutes(admin, student *gin.RouterGroup, apiHandler *apiHandler) {

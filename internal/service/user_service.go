@@ -27,7 +27,6 @@ type CreateUserInput struct {
 	Password  string
 	Role      int
 	Status    int
-	ClassIDs  []uint64
 }
 
 type UpdateUserInput struct {
@@ -35,7 +34,6 @@ type UpdateUserInput struct {
 	RealName  string
 	Role      int
 	Status    int
-	ClassIDs  []uint64
 }
 
 func NewUserService(db *gorm.DB) *UserService {
@@ -83,72 +81,41 @@ func (s *UserService) CreateUser(input CreateUserInput) (model.User, error) {
 		user.Status = model.UserStatusActive
 	}
 
-	err = s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&user).Error; err != nil {
-			return err
-		}
-		if len(input.ClassIDs) == 0 {
-			return nil
-		}
-		relations := make([]model.UserClass, 0, len(input.ClassIDs))
-		for _, classID := range input.ClassIDs {
-			relations = append(relations, model.UserClass{UserID: user.ID, ClassID: classID})
-		}
-		return tx.Create(&relations).Error
-	})
+	err = s.db.Create(&user).Error
 	return user, err
 }
 
-func (s *UserService) GetUserWithClasses(studentID string) (model.User, []model.UserClass, error) {
+func (s *UserService) GetUser(studentID string) (model.User, error) {
 	var user model.User
 	if err := s.db.First(&user, "student_id = ?", studentID).Error; err != nil {
-		return model.User{}, nil, ErrUserNotFound
+		return model.User{}, ErrUserNotFound
 	}
-	var classes []model.UserClass
-	if err := s.db.Where("user_id = ?", user.ID).Find(&classes).Error; err != nil {
-		return model.User{}, nil, err
-	}
-	return user, classes, nil
+	return user, nil
 }
 
-func (s *UserService) UpdateUser(currentUserID uint64, targetStudentID string, input UpdateUserInput) (model.User, []model.UserClass, error) {
+func (s *UserService) UpdateUser(currentUserID uint64, targetStudentID string, input UpdateUserInput) (model.User, error) {
 	var user model.User
 	if err := s.db.First(&user, "student_id = ?", targetStudentID).Error; err != nil {
-		return model.User{}, nil, ErrUserNotFound
+		return model.User{}, ErrUserNotFound
 	}
 	if currentUserID == user.ID && input.Role != model.RoleAdmin {
-		return model.User{}, nil, ErrAdminRemoveOwnRole
+		return model.User{}, ErrAdminRemoveOwnRole
 	}
 	if currentUserID == user.ID && input.Status != model.UserStatusActive {
-		return model.User{}, nil, ErrAdminFreezeSelf
+		return model.User{}, ErrAdminFreezeSelf
 	}
 
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&user).Updates(map[string]interface{}{
-			"student_id": input.StudentID,
-			"real_name":  input.RealName,
-			"role":       input.Role,
-			"status":     input.Status,
-		}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id = ?", user.ID).Delete(&model.UserClass{}).Error; err != nil {
-			return err
-		}
-		if len(input.ClassIDs) == 0 {
-			return nil
-		}
-		relations := make([]model.UserClass, 0, len(input.ClassIDs))
-		for _, classID := range input.ClassIDs {
-			relations = append(relations, model.UserClass{UserID: user.ID, ClassID: classID})
-		}
-		return tx.Create(&relations).Error
-	})
+	err := s.db.Model(&user).Updates(map[string]interface{}{
+		"student_id": input.StudentID,
+		"real_name":  input.RealName,
+		"role":       input.Role,
+		"status":     input.Status,
+	}).Error
 	if err != nil {
-		return model.User{}, nil, err
+		return model.User{}, err
 	}
 
-	return s.GetUserWithClasses(input.StudentID)
+	return s.GetUser(input.StudentID)
 }
 
 func (s *UserService) ResetUserPassword(currentUserID uint64, targetStudentID, newPassword string) error {

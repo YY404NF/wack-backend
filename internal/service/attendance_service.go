@@ -72,7 +72,8 @@ func (s *AttendanceService) EnterAttendanceCheck(courseSessionID uint64, user mo
 			for _, student := range students {
 				details = append(details, model.AttendanceDetail{
 					AttendanceCheckID: attendanceCheck.ID,
-					UserID:            student.UserID,
+					StudentID:         student.StudentID,
+					RealName:          student.RealName,
 					Status:            model.AttendanceUnset,
 				})
 			}
@@ -103,7 +104,8 @@ func (s *AttendanceService) UpdateAttendanceStatus(detailID uint64, status int, 
 		logItem := model.AttendanceDetailLog{
 			AttendanceDetailID: detail.ID,
 			AttendanceCheckID:  detail.AttendanceCheckID,
-			UserID:             detail.UserID,
+			StudentID:          detail.StudentID,
+			RealName:           detail.RealName,
 			OperatorUserID:     operatorUserID,
 			OldStatus:          &oldStatus,
 			NewStatus:          status,

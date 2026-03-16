@@ -38,5 +38,8 @@ func New() (*App, error) {
 }
 
 func (a *App) Run() error {
+	if a.cfg.Host != "" {
+		return a.router.Run(a.cfg.Host + ":" + a.cfg.Port)
+	}
 	return a.router.Run(":" + a.cfg.Port)
 }

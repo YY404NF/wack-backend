@@ -1,20 +1,18 @@
 package dto
 
 type CreateUserRequest struct {
-	StudentID string   `json:"student_id" binding:"required"`
-	RealName  string   `json:"real_name" binding:"required"`
-	Password  string   `json:"password" binding:"required,min=6"`
-	Role      int      `json:"role" binding:"required"`
-	Status    int      `json:"status"`
-	ClassIDs  []uint64 `json:"class_ids"`
+	StudentID string `json:"student_id" binding:"required"`
+	RealName  string `json:"real_name" binding:"required"`
+	Password  string `json:"password" binding:"required,min=6"`
+	Role      int    `json:"role" binding:"required"`
+	Status    int    `json:"status"`
 }
 
 type UpdateUserRequest struct {
-	StudentID string   `json:"student_id" binding:"required"`
-	RealName  string   `json:"real_name" binding:"required"`
-	Role      int      `json:"role" binding:"required"`
-	Status    int      `json:"status" binding:"required"`
-	ClassIDs  []uint64 `json:"class_ids"`
+	StudentID string `json:"student_id" binding:"required"`
+	RealName  string `json:"real_name" binding:"required"`
+	Role      int    `json:"role" binding:"required"`
+	Status    int    `json:"status" binding:"required"`
 }
 
 type ResetUserPasswordRequest struct {

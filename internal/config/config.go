@@ -3,6 +3,7 @@ package config
 import "os"
 
 type Config struct {
+	Host            string
 	Port            string
 	DatabasePath    string
 	JWTSecret       string
@@ -11,6 +12,7 @@ type Config struct {
 
 func Load() Config {
 	return Config{
+		Host:            getEnv("WACK_HOST", ""),
 		Port:            getEnv("WACK_PORT", "8080"),
 		DatabasePath:    getEnv("WACK_DB_PATH", "data/wack.db"),
 		JWTSecret:       getEnv("WACK_JWT_SECRET", "wack-dev-secret"),

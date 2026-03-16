@@ -5,7 +5,6 @@ import (
 
 	"wack-backend/internal/httpserver/dto"
 	"wack-backend/internal/model"
-	"wack-backend/internal/query"
 )
 
 func (h *apiHandler) listClasses(c *gin.Context) {
@@ -92,104 +91,102 @@ func (h *apiHandler) getClassStudents(c *gin.Context) {
 	ok(c, users)
 }
 
-func (h *apiHandler) listFreeTimes(c *gin.Context) {
-	page, pageSize := parsePage(c)
-	user, _ := currentUser(c)
-	items, total, err := h.freeTimes.ListFreeTimes(c.Query("term"), c.Query("student_id"), user, page, pageSize)
+func (h *apiHandler) listClassStudentCandidates(c *gin.Context) {
+	items, err := h.classes.ListStudentCandidates()
 	if err != nil {
-		fail(c, 500, "list free times failed")
+		fail(c, 500, "list class student candidates failed")
 		return
 	}
-	ok(c, pageResult[query.FreeTimeItem]{Items: items, Page: page, PageSize: pageSize, Total: total})
+	ok(c, items)
 }
 
-func (h *apiHandler) createFreeTime(c *gin.Context) {
-	user, _ := currentUser(c)
-	var req dto.FreeTimeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, 400, "invalid request")
-		return
-	}
-	targetUserID := user.ID
-	if user.Role == model.RoleAdmin && req.StudentID != "" {
-		target, err := h.findUserByStudentID(req.StudentID)
-		if err != nil {
-			fail(c, 404, "user not found")
-			return
-		}
-		targetUserID = target.ID
-	}
-	item, err := h.freeTimes.CreateFreeTime(model.StudentFreeTime{
-		Term:      req.Term,
-		UserID:    targetUserID,
-		Weekday:   req.Weekday,
-		Section:   req.Section,
-		FreeWeeks: req.FreeWeeks,
-	})
-	if err != nil {
-		fail(c, 400, "create free time failed")
-		return
-	}
-	ok(c, item)
-}
-
-func (h *apiHandler) updateFreeTime(c *gin.Context) {
-	id, err := parseUintParam(c, "id")
+func (h *apiHandler) createClassStudent(c *gin.Context) {
+	classID, err := parseUintParam(c, "id")
 	if err != nil {
 		fail(c, 400, err.Error())
 		return
 	}
-	user, _ := currentUser(c)
-	item, err := h.freeTimes.GetFreeTime(id)
-	if err != nil {
-		fail(c, 404, "free time not found")
-		return
-	}
-	if user.Role == model.RoleStudent && item.UserID != user.ID {
-		fail(c, 403, "cannot modify other user's free time")
-		return
-	}
-	var req dto.FreeTimeRequest
+	var req dto.ClassStudentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
 		return
 	}
-	targetUserID := item.UserID
-	if user.Role == model.RoleAdmin && req.StudentID != "" {
-		target, err := h.findUserByStudentID(req.StudentID)
-		if err != nil {
-			fail(c, 404, "user not found")
-			return
-		}
-		targetUserID = target.ID
-	} else if user.Role == model.RoleStudent {
-		targetUserID = user.ID
+	student, err := h.classes.CreateClassStudent(classID, model.ClassStudent{
+		StudentID: req.StudentID,
+		RealName:  req.RealName,
+	})
+	if err != nil {
+		fail(c, 400, "create class student failed")
+		return
 	}
-	if err := h.freeTimes.UpdateFreeTime(id, req.Term, targetUserID, req.Weekday, req.Section, req.FreeWeeks); err != nil {
-		fail(c, 400, "update free time failed")
+	ok(c, student)
+}
+
+func (h *apiHandler) importClassStudents(c *gin.Context) {
+	classID, err := parseUintParam(c, "id")
+	if err != nil {
+		fail(c, 400, err.Error())
+		return
+	}
+	var req dto.ImportClassStudentsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, 400, "invalid request")
+		return
+	}
+	students := make([]model.ClassStudent, 0, len(req))
+	for _, item := range req {
+		students = append(students, model.ClassStudent{
+			StudentID: item.StudentID,
+			RealName:  item.RealName,
+		})
+	}
+	if err := h.classes.ImportClassStudents(classID, students); err != nil {
+		fail(c, 400, "import class students failed")
 		return
 	}
 	ok(c, gin.H{})
 }
 
-func (h *apiHandler) deleteFreeTime(c *gin.Context) {
-	id, err := parseUintParam(c, "id")
+func (h *apiHandler) updateClassStudent(c *gin.Context) {
+	classID, err := parseUintParam(c, "id")
 	if err != nil {
 		fail(c, 400, err.Error())
 		return
 	}
-	user, _ := currentUser(c)
-	item, err := h.freeTimes.GetFreeTime(id)
+	studentID, err := parseUintParam(c, "student_id")
 	if err != nil {
-		fail(c, 404, "free time not found")
+		fail(c, 400, err.Error())
 		return
 	}
-	if user.Role == model.RoleStudent && item.UserID != user.ID {
-		fail(c, 403, "cannot delete other user's free time")
+	var req dto.ClassStudentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, 400, "invalid request")
 		return
 	}
-	if err := h.freeTimes.DeleteFreeTime(id); err != nil {
-		fail(c, 500, "delete free time failed")
+	student, err := h.classes.UpdateClassStudent(classID, studentID, model.ClassStudent{
+		StudentID: req.StudentID,
+		RealName:  req.RealName,
+	})
+	if err != nil {
+		fail(c, 400, "update class student failed")
+		return
+	}
+	ok(c, student)
+}
+
+func (h *apiHandler) deleteClassStudent(c *gin.Context) {
+	classID, err := parseUintParam(c, "id")
+	if err != nil {
+		fail(c, 400, err.Error())
+		return
+	}
+	studentID, err := parseUintParam(c, "student_id")
+	if err != nil {
+		fail(c, 400, err.Error())
+		return
+	}
+	if err := h.classes.DeleteClassStudent(classID, studentID); err != nil {
+		fail(c, 400, "delete class student failed")
 		return
 	}
 	ok(c, gin.H{})
