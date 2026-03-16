@@ -1,11 +1,9 @@
 package service
 
 import (
-	"encoding/json"
 	"errors"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
 	"wack-backend/internal/model"
@@ -15,10 +13,11 @@ import (
 type AttendanceService struct {
 	db         *gorm.DB
 	attendance *query.AttendanceQuery
+	audit      *auditLogger
 }
 
 func NewAttendanceService(db *gorm.DB) *AttendanceService {
-	return &AttendanceService{db: db, attendance: query.NewAttendanceQuery(db)}
+	return &AttendanceService{db: db, attendance: query.NewAttendanceQuery(db), audit: newAuditLogger()}
 }
 
 func (s *AttendanceService) DashboardSummary(weekNo, term, courseID string) (query.AttendanceDashboardSummary, error) {
@@ -101,38 +100,7 @@ func (s *AttendanceService) UpdateAttendanceStatus(detailID uint64, status int, 
 		}).Error; err != nil {
 			return err
 		}
-		logItem := model.AttendanceDetailLog{
-			AttendanceDetailID: detail.ID,
-			AttendanceCheckID:  detail.AttendanceCheckID,
-			StudentID:          detail.StudentID,
-			RealName:           detail.RealName,
-			OperatorUserID:     operatorUserID,
-			OldStatus:          &oldStatus,
-			NewStatus:          status,
-			OperationType:      "set_status",
-			OperatedAt:         now,
-		}
-		if err := tx.Create(&logItem).Error; err != nil {
-			return err
-		}
-		if writeAdminLog {
-			oldValueBytes, _ := json.Marshal(gin.H{"status": oldStatus})
-			newValueBytes, _ := json.Marshal(gin.H{"status": status})
-			oldValue := string(oldValueBytes)
-			newValue := string(newValueBytes)
-			adminLog := model.AdminOperationLog{
-				OperatorUserID: operatorUserID,
-				TargetTable:    "attendance_detail",
-				TargetID:       detail.ID,
-				ActionType:     "update",
-				OldValue:       &oldValue,
-				NewValue:       &newValue,
-			}
-			if err := tx.Create(&adminLog).Error; err != nil {
-				return err
-			}
-		}
-		return nil
+		return s.audit.logAttendanceStatusChange(tx, detail, operatorUserID, oldStatus, status, now, writeAdminLog)
 	})
 }
 

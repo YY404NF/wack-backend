@@ -60,27 +60,27 @@ func mountCourseRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 	admin.PUT("/courses/:id/students", apiHandler.replaceCourseStudents)
 	admin.PUT("/courses/:id/classes", apiHandler.replaceCourseClasses)
 	admin.PUT("/courses/:id/sessions", apiHandler.replaceCourseSessions)
-	admin.GET("/admin/course-calendar", apiHandler.adminCourseCalendar)
+	admin.GET("/course-calendar", apiHandler.adminCourseCalendar)
 }
 
 func mountSystemSettingRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
-	admin.GET("/admin/system-settings", apiHandler.getSystemSetting)
-	admin.PUT("/admin/system-settings", apiHandler.updateSystemSetting)
+	admin.GET("/system-settings", apiHandler.getSystemSetting)
+	admin.PUT("/system-settings", apiHandler.updateSystemSetting)
 }
 
 func mountAttendanceRoutes(admin, student *gin.RouterGroup, apiHandler *apiHandler) {
-	admin.GET("/admin/attendance-dashboard", apiHandler.adminAttendanceDashboard)
-	admin.GET("/admin/attendance-results", apiHandler.adminAttendanceResults)
-	admin.GET("/admin/free-time-calendar", apiHandler.adminFreeTimeCalendar)
-	admin.GET("/admin/attendance-checks/:id", apiHandler.adminGetAttendanceCheck)
-	admin.PATCH("/admin/attendance-details/:id/status", apiHandler.adminUpdateAttendanceStatus)
-	admin.GET("/admin/attendance-details/:id/logs", apiHandler.adminAttendanceDetailLogs)
-	admin.GET("/admin/operation-logs", apiHandler.listAdminOperationLogs)
-	admin.GET("/admin/attendance-detail-logs", apiHandler.listAttendanceDetailLogs)
+	admin.GET("/attendance-dashboard", apiHandler.adminAttendanceDashboard)
+	admin.GET("/attendance-results", apiHandler.adminAttendanceResults)
+	admin.GET("/free-time-calendar", apiHandler.adminFreeTimeCalendar)
+	admin.GET("/attendance-checks/:id", apiHandler.adminGetAttendanceCheck)
+	admin.PATCH("/attendance-details/:id/status", apiHandler.adminUpdateAttendanceStatus)
+	admin.GET("/attendance-details/:id/logs", apiHandler.adminAttendanceDetailLogs)
+	admin.GET("/operation-logs", apiHandler.listAdminOperationLogs)
+	admin.GET("/attendance-detail-logs", apiHandler.listAttendanceDetailLogs)
 
-	student.GET("/student/courses/available", apiHandler.studentAvailableCourses)
-	student.POST("/student/attendance-checks", apiHandler.studentEnterAttendanceCheck)
-	student.GET("/student/attendance-checks/:id", apiHandler.studentGetAttendanceCheck)
-	student.PATCH("/student/attendance-details/:id/status", apiHandler.studentUpdateAttendanceStatus)
-	student.POST("/student/attendance-checks/:id/complete", apiHandler.studentCompleteAttendanceCheck)
+	student.GET("/courses/available", apiHandler.studentAvailableCourses)
+	student.POST("/attendance-checks", apiHandler.studentEnterAttendanceCheck)
+	student.GET("/attendance-checks/:id", apiHandler.studentGetAttendanceCheck)
+	student.PATCH("/attendance-details/:id/status", apiHandler.studentUpdateAttendanceStatus)
+	student.POST("/attendance-checks/:id/complete", apiHandler.studentCompleteAttendanceCheck)
 }

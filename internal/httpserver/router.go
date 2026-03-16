@@ -27,14 +27,14 @@ func NewRouter(cfg config.Config, db *gorm.DB) (*gin.Engine, error) {
 		protected.Use(authMW)
 		mountFreeTimeRoutes(protected, apiHandler)
 
-		admin := protected.Group("")
+		admin := protected.Group("/admin")
 		admin.Use(requireRole(1))
 		mountUserRoutes(admin, apiHandler)
 		mountClassRoutes(admin, apiHandler)
 		mountCourseRoutes(admin, apiHandler)
 		mountSystemSettingRoutes(admin, apiHandler)
 
-		student := protected.Group("")
+		student := protected.Group("/student")
 		student.Use(requireRole(2))
 		mountAttendanceRoutes(admin, student, apiHandler)
 	}
