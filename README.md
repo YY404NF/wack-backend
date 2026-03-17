@@ -31,3 +31,11 @@
 5. 安装或更新 systemd 服务文件
 6. 切换 `current` 软链接到新 release
 7. 重启后端服务
+
+## 手动重启服务
+
+默认服务名是 `wack-backend`，在服务器上可以用下面的命令手动重启：
+
+```bash
+sudo systemctl restart wack-backend
+```
