@@ -192,7 +192,7 @@ func (q *AttendanceQuery) AvailableCourseGroupLessons(weekday, weekNo int) ([]Se
 			course_group_lesson.building_name,
 			course_group_lesson.room_name,
 			course.course_name,
-			course.teacher_name,
+			course.teacher_name
 		`).
 		Joins("JOIN course_group ON course_group.id = course_group_lesson.course_group_id").
 		Joins("JOIN course ON course.id = course_group.course_id").
@@ -218,7 +218,7 @@ func (q *AttendanceQuery) AvailableCourseGroupLessonsForClass(weekday, weekNo in
 			course_group_lesson.building_name,
 			course_group_lesson.room_name,
 			course.course_name,
-			course.teacher_name,
+			course.teacher_name
 		`).
 		Joins("JOIN course_group ON course_group.id = course_group_lesson.course_group_id").
 		Joins("JOIN course ON course.id = course_group.course_id").
