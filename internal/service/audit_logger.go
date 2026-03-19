@@ -28,3 +28,7 @@ func (l *auditLogger) logAttendanceStatusChange(tx *gorm.DB, record model.Attend
 	}
 	return nil
 }
+
+func (l *auditLogger) logAttendanceStatusCreate(tx *gorm.DB, record model.AttendanceRecord, operatorUserID uint64, status int, operatedAt time.Time) error {
+	return l.logAttendanceStatusChange(tx, record, operatorUserID, status, status, operatedAt)
+}

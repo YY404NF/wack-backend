@@ -150,7 +150,7 @@ var latestSchemaSQL = []string{
 		course_group_lesson_id INTEGER NOT NULL,
 		student_id INTEGER NOT NULL,
 		class_id INTEGER,
-		attendance_status INTEGER NOT NULL DEFAULT 0,
+		attendance_status INTEGER NOT NULL,
 		updated_by_user_id INTEGER,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

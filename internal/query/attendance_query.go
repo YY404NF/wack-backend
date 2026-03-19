@@ -11,7 +11,6 @@ type AttendanceDashboardSummary struct {
 	Late    int64 `json:"late"`
 	Absent  int64 `json:"absent"`
 	Leave   int64 `json:"leave"`
-	Unset   int64 `json:"unset"`
 }
 
 type AttendanceResultItem struct {
@@ -31,15 +30,16 @@ type AttendanceResultItem struct {
 }
 
 type AttendanceRecordItem struct {
-	ID                 uint64     `json:"id"`
+	ID                  uint64     `json:"id"`
+	AttendanceRecordID  *uint64    `json:"attendance_record_id"`
 	CourseGroupLessonID uint64     `json:"course_group_lesson_id"`
-	StudentID          string     `json:"student_id"`
-	RealName           string     `json:"real_name"`
-	ClassID            *uint64    `json:"class_id"`
-	ClassName          string     `json:"class_name"`
-	Status             int        `json:"status"`
-	StatusSetByUserID  *uint64    `json:"status_set_by_user_id"`
-	StatusSetAt        *time.Time `json:"status_set_at"`
+	StudentID           string     `json:"student_id"`
+	RealName            string     `json:"real_name"`
+	ClassID             *uint64    `json:"class_id"`
+	ClassName           string     `json:"class_name"`
+	Status              *int       `json:"status"`
+	StatusSetByUserID   *uint64    `json:"status_set_by_user_id"`
+	StatusSetAt         *time.Time `json:"status_set_at"`
 }
 
 type AttendanceClassGroupItem struct {
@@ -49,45 +49,45 @@ type AttendanceClassGroupItem struct {
 }
 
 type AvailableCourseItem struct {
-	CourseGroupLessonID uint64  `json:"course_group_lesson_id"`
-	CourseID            uint64  `json:"course_id"`
-	CourseName          string  `json:"course_name"`
-	TeacherName         string  `json:"teacher_name"`
-	WeekNo              int     `json:"week_no"`
-	Weekday             int     `json:"weekday"`
-	Section             int     `json:"section"`
-	BuildingName        string  `json:"building_name"`
-	RoomName            string  `json:"room_name"`
-	CanEnter            bool    `json:"can_enter"`
-	EnterDeadline       string  `json:"enter_deadline"`
+	CourseGroupLessonID uint64 `json:"course_group_lesson_id"`
+	CourseID            uint64 `json:"course_id"`
+	CourseName          string `json:"course_name"`
+	TeacherName         string `json:"teacher_name"`
+	WeekNo              int    `json:"week_no"`
+	Weekday             int    `json:"weekday"`
+	Section             int    `json:"section"`
+	BuildingName        string `json:"building_name"`
+	RoomName            string `json:"room_name"`
+	CanEnter            bool   `json:"can_enter"`
+	EnterDeadline       string `json:"enter_deadline"`
 }
 
 type SessionWithCourse struct {
-	ID                  uint64  `json:"id"`
-	CourseID            uint64  `json:"course_id"`
-	SessionNo           int     `json:"session_no"`
-	WeekNo              int     `json:"week_no"`
-	Weekday             int     `json:"weekday"`
-	Section             int     `json:"section"`
-	BuildingName        string  `json:"building_name"`
-	RoomName            string  `json:"room_name"`
-	CourseName          string  `json:"course_name"`
-	TeacherName         string  `json:"teacher_name"`
+	ID           uint64 `json:"id"`
+	CourseID     uint64 `json:"course_id"`
+	SessionNo    int    `json:"session_no"`
+	WeekNo       int    `json:"week_no"`
+	Weekday      int    `json:"weekday"`
+	Section      int    `json:"section"`
+	BuildingName string `json:"building_name"`
+	RoomName     string `json:"room_name"`
+	CourseName   string `json:"course_name"`
+	TeacherName  string `json:"teacher_name"`
 }
 
 type AttendanceRecordLogItem struct {
-	ID                 uint64    `json:"id"`
-	AttendanceRecordID uint64    `json:"attendance_record_id"`
+	ID                  uint64    `json:"id"`
+	AttendanceRecordID  uint64    `json:"attendance_record_id"`
 	CourseGroupLessonID uint64    `json:"course_group_lesson_id"`
-	StudentID          string    `json:"student_id"`
-	RealName           string    `json:"real_name"`
-	OperatorUserID     uint64    `json:"operator_user_id"`
-	OperatorLoginID    string    `json:"operator_login_id"`
-	OldStatus          *int      `json:"old_status"`
-	NewStatus          int       `json:"new_status"`
-	OperationType      string    `json:"operation_type"`
-	OperatedAt         time.Time `json:"operated_at"`
-	CreatedAt          time.Time `json:"created_at"`
+	StudentID           string    `json:"student_id"`
+	RealName            string    `json:"real_name"`
+	OperatorUserID      uint64    `json:"operator_user_id"`
+	OperatorLoginID     string    `json:"operator_login_id"`
+	OldStatus           *int      `json:"old_status"`
+	NewStatus           int       `json:"new_status"`
+	OperationType       string    `json:"operation_type"`
+	OperatedAt          time.Time `json:"operated_at"`
+	CreatedAt           time.Time `json:"created_at"`
 }
 
 type AttendanceQuery struct {
@@ -114,11 +114,10 @@ func (q *AttendanceQuery) DashboardSummary(weekNo, term, courseID string) (Atten
 		base = base.Where("course.id = ?", courseID)
 	}
 	statuses := map[int]*int64{
-		1: &result.Present,
-		2: &result.Late,
-		3: &result.Absent,
-		4: &result.Leave,
-		0: &result.Unset,
+		0: &result.Present,
+		1: &result.Late,
+		2: &result.Absent,
+		3: &result.Leave,
 	}
 	for status, target := range statuses {
 		var count int64
@@ -231,56 +230,63 @@ func (q *AttendanceQuery) AvailableCourseGroupLessonsForClass(weekday, weekNo in
 
 func (q *AttendanceQuery) AttendanceSessionRecords(sessionID uint64) ([]AttendanceRecordItem, error) {
 	var records []AttendanceRecordItem
-	err := q.db.Table("attendance_record").
+	err := q.db.Table("course_group_student").
 		Select(`
-			attendance_record.id,
-			attendance_record.course_group_lesson_id AS course_group_lesson_id,
+			student.id AS id,
+			attendance_record.id AS attendance_record_id,
+			course_group_lesson.id AS course_group_lesson_id,
 			student.student_no AS student_id,
 			student.student_name AS real_name,
-			attendance_record.class_id,
+			course_group_student.class_id AS class_id,
 			COALESCE(class.class_name, '') AS class_name,
 			attendance_record.attendance_status AS status,
 			attendance_record.updated_by_user_id AS status_set_by_user_id,
 			attendance_record.updated_at AS status_set_at
 		`).
-		Joins("JOIN student ON student.id = attendance_record.student_id").
-		Joins("LEFT JOIN class ON class.id = student.class_id").
-		Where("attendance_record.course_group_lesson_id = ?", sessionID).
-		Order("attendance_record.id ASC").
+		Joins("JOIN course_group_lesson ON course_group_lesson.course_group_id = course_group_student.course_group_id AND course_group_lesson.id = ?", sessionID).
+		Joins("JOIN student ON student.id = course_group_student.student_id").
+		Joins("LEFT JOIN attendance_record ON attendance_record.course_group_lesson_id = course_group_lesson.id AND attendance_record.student_id = course_group_student.student_id").
+		Joins("LEFT JOIN class ON class.id = course_group_student.class_id").
+		Where("course_group_student.status = 1 AND student.status = 1").
+		Order("COALESCE(class.class_name, '其他学生') ASC, student.student_no ASC, student.id ASC").
 		Scan(&records).Error
 	return records, err
 }
 
 func (q *AttendanceQuery) AttendanceSessionRecordsForClass(sessionID uint64, classID uint64) ([]AttendanceRecordItem, error) {
 	var records []AttendanceRecordItem
-	err := q.db.Table("attendance_record").
+	err := q.db.Table("course_group_student").
 		Select(`
-			attendance_record.id,
-			attendance_record.course_group_lesson_id AS course_group_lesson_id,
+			student.id AS id,
+			attendance_record.id AS attendance_record_id,
+			course_group_lesson.id AS course_group_lesson_id,
 			student.student_no AS student_id,
 			student.student_name AS real_name,
-			attendance_record.class_id,
+			course_group_student.class_id AS class_id,
 			COALESCE(class.class_name, '') AS class_name,
 			attendance_record.attendance_status AS status,
 			attendance_record.updated_by_user_id AS status_set_by_user_id,
 			attendance_record.updated_at AS status_set_at
 		`).
-		Joins("JOIN student ON student.id = attendance_record.student_id AND student.class_id = ?", classID).
-		Joins("JOIN class ON class.id = student.class_id").
-		Where("attendance_record.course_group_lesson_id = ?", sessionID).
-		Order("attendance_record.id ASC").
+		Joins("JOIN course_group_lesson ON course_group_lesson.course_group_id = course_group_student.course_group_id AND course_group_lesson.id = ?", sessionID).
+		Joins("JOIN student ON student.id = course_group_student.student_id").
+		Joins("LEFT JOIN attendance_record ON attendance_record.course_group_lesson_id = course_group_lesson.id AND attendance_record.student_id = course_group_student.student_id").
+		Joins("JOIN class ON class.id = course_group_student.class_id").
+		Where("course_group_student.class_id = ? AND course_group_student.status = 1 AND student.status = 1", classID).
+		Order("student.student_no ASC, student.id ASC").
 		Scan(&records).Error
 	return records, err
 }
 
 func (q *AttendanceQuery) AttendanceClassGroups(checkID uint64) ([]AttendanceClassGroupItem, error) {
 	var groups []AttendanceClassGroupItem
-	if err := q.db.Table("attendance_record").
-		Select("student.class_id AS class_id, COALESCE(class.class_name, '其他学生') AS class_name, COUNT(attendance_record.id) AS student_count").
-		Joins("LEFT JOIN student ON student.id = attendance_record.student_id").
-		Joins("LEFT JOIN class ON class.id = student.class_id").
-		Where("attendance_record.course_group_lesson_id = ?", checkID).
-		Group("student.class_id, class.class_name").
+	if err := q.db.Table("course_group_student").
+		Select("course_group_student.class_id AS class_id, COALESCE(class.class_name, '其他学生') AS class_name, COUNT(course_group_student.id) AS student_count").
+		Joins("JOIN course_group_lesson ON course_group_lesson.course_group_id = course_group_student.course_group_id AND course_group_lesson.id = ?", checkID).
+		Joins("JOIN student ON student.id = course_group_student.student_id AND student.status = 1").
+		Joins("LEFT JOIN class ON class.id = course_group_student.class_id").
+		Where("course_group_student.status = 1").
+		Group("course_group_student.class_id, class.class_name").
 		Order("class.class_name ASC").
 		Scan(&groups).Error; err != nil {
 		return nil, err
@@ -290,11 +296,12 @@ func (q *AttendanceQuery) AttendanceClassGroups(checkID uint64) ([]AttendanceCla
 
 func (q *AttendanceQuery) AttendanceClassGroupsForClass(checkID uint64, classID uint64) ([]AttendanceClassGroupItem, error) {
 	var groups []AttendanceClassGroupItem
-	err := q.db.Table("attendance_record").
-		Select("class.id AS class_id, class.class_name, COUNT(attendance_record.id) AS student_count").
-		Joins("JOIN student ON student.id = attendance_record.student_id AND student.class_id = ?", classID).
-		Joins("JOIN class ON class.id = student.class_id").
-		Where("attendance_record.course_group_lesson_id = ?", checkID).
+	err := q.db.Table("course_group_student").
+		Select("class.id AS class_id, class.class_name, COUNT(course_group_student.id) AS student_count").
+		Joins("JOIN course_group_lesson ON course_group_lesson.course_group_id = course_group_student.course_group_id AND course_group_lesson.id = ?", checkID).
+		Joins("JOIN student ON student.id = course_group_student.student_id AND student.status = 1").
+		Joins("JOIN class ON class.id = course_group_student.class_id").
+		Where("course_group_student.class_id = ? AND course_group_student.status = 1", classID).
 		Group("class.id, class.class_name").
 		Scan(&groups).Error
 	return groups, err
@@ -332,7 +339,10 @@ func (q *AttendanceQuery) AttendanceRecordLogsByID(recordID uint64) ([]Attendanc
 			operator_user.login_id AS operator_login_id,
 			attendance_record_log.old_attendance_status AS old_status,
 			attendance_record_log.new_attendance_status AS new_status,
-			'set_status' AS operation_type,
+			CASE
+				WHEN attendance_record_log.old_attendance_status = attendance_record_log.new_attendance_status THEN 'create_record'
+				ELSE 'set_status'
+			END AS operation_type,
 			attendance_record_log.created_at AS operated_at,
 			attendance_record_log.created_at
 		`).

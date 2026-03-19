@@ -204,7 +204,7 @@ func (h *apiHandler) studentUpdateAttendanceStatus(c *gin.Context) {
 		fail(c, 400, "invalid request")
 		return
 	}
-	if req.Status < model.AttendanceUnset || req.Status > model.AttendanceOnLeave {
+	if req.Status < model.AttendancePresent || req.Status > model.AttendanceOnLeave {
 		fail(c, 400, "invalid status")
 		return
 	}
@@ -259,8 +259,8 @@ func (h *apiHandler) studentSubmitAttendanceStatuses(c *gin.Context) {
 			return
 		}
 		items = append(items, service.AttendanceStatusInput{
-			AttendanceRecordID: item.AttendanceRecordID,
-			Status:             item.Status,
+			StudentRefID: item.StudentRefID,
+			Status:       item.Status,
 		})
 	}
 
@@ -350,6 +350,34 @@ func (h *apiHandler) adminGetAttendanceSession(c *gin.Context) {
 	})
 }
 
+func (h *apiHandler) adminUpsertAttendanceStatus(c *gin.Context) {
+	user, _ := currentUser(c)
+	sessionID, err := parseUintParam(c, "id")
+	if err != nil {
+		fail(c, 400, err.Error())
+		return
+	}
+	studentID, err := parseUintParam(c, "student_id")
+	if err != nil {
+		fail(c, 400, err.Error())
+		return
+	}
+	var req dto.UpdateAttendanceStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, 400, "invalid request")
+		return
+	}
+	if req.Status < model.AttendancePresent || req.Status > model.AttendanceOnLeave {
+		fail(c, 400, "invalid status")
+		return
+	}
+	if err := h.attendance.UpsertAttendanceStatusForStudent(sessionID, studentID, req.Status, user.ID, true); err != nil {
+		fail(c, 500, "update attendance status failed")
+		return
+	}
+	ok(c, gin.H{})
+}
+
 func (h *apiHandler) adminUpdateAttendanceStatus(c *gin.Context) {
 	user, _ := currentUser(c)
 	id, err := parseUintParam(c, "id")
@@ -360,6 +388,10 @@ func (h *apiHandler) adminUpdateAttendanceStatus(c *gin.Context) {
 	var req dto.UpdateAttendanceStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
+		return
+	}
+	if req.Status < model.AttendancePresent || req.Status > model.AttendanceOnLeave {
+		fail(c, 400, "invalid status")
 		return
 	}
 	if err := h.attendance.UpdateAttendanceStatus(id, req.Status, user.ID, true); err != nil {

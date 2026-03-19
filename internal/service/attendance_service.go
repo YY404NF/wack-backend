@@ -17,8 +17,8 @@ type AttendanceService struct {
 }
 
 type AttendanceStatusInput struct {
-	AttendanceRecordID uint64
-	Status             int
+	StudentRefID uint64
+	Status       int
 }
 
 type SubmitAttendanceStatusesResult struct {
@@ -66,51 +66,7 @@ func (s *AttendanceService) EnterAttendanceSession(courseGroupLessonID uint64, u
 	if !withinDeadline(lesson, time.Now()) {
 		return 0, ErrAttendanceDeadlinePassed
 	}
-
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		var detailCount int64
-		if err := tx.Model(&model.AttendanceRecord{}).Where("course_group_lesson_id = ?", lesson.ID).Count(&detailCount).Error; err != nil {
-			return err
-		}
-		if detailCount > 0 {
-			return nil
-		}
-
-		var group model.CourseGroup
-		if err := tx.First(&group, lesson.CourseGroupID).Error; err != nil {
-			return err
-		}
-
-		type studentRow struct {
-			StudentID uint64  `gorm:"column:student_id"`
-			ClassID   *uint64 `gorm:"column:class_id"`
-		}
-		var students []studentRow
-		if err := tx.Table("course_group_student").
-			Select("course_group_student.student_id, course_group_student.class_id").
-			Where("course_group_student.course_group_id = ? AND course_group_student.status = 1 AND student.status = 1", lesson.CourseGroupID).
-			Joins("JOIN student ON student.id = course_group_student.student_id").
-			Order("student.student_no ASC, student.id ASC").
-			Scan(&students).Error; err != nil {
-			return err
-		}
-		records := make([]model.AttendanceRecord, 0, len(students))
-		for _, student := range students {
-			records = append(records, model.AttendanceRecord{
-				TermID:              group.TermID,
-				CourseID:            group.CourseID,
-				CourseGroupLessonID: lesson.ID,
-				StudentID:           student.StudentID,
-				ClassID:             student.ClassID,
-				AttendanceStatus:    model.AttendanceUnset,
-			})
-		}
-		if len(records) > 0 {
-			return tx.Create(&records).Error
-		}
-		return nil
-	})
-	return courseGroupLessonID, err
+	return courseGroupLessonID, nil
 }
 
 func (s *AttendanceService) UpdateAttendanceStatus(detailID uint64, status int, operatorUserID uint64, allowOverwrite bool) error {
@@ -118,12 +74,63 @@ func (s *AttendanceService) UpdateAttendanceStatus(detailID uint64, status int, 
 	if err := s.db.First(&record, detailID).Error; err != nil {
 		return ErrAttendanceRecordNotFound
 	}
-	if !allowOverwrite && record.AttendanceStatus != model.AttendanceUnset {
+	if !allowOverwrite {
 		return ErrAttendanceRecordLocked
+	}
+	if record.AttendanceStatus == status {
+		return nil
 	}
 	now := time.Now()
 	oldStatus := record.AttendanceStatus
 	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&record).Updates(map[string]interface{}{
+			"attendance_status":  status,
+			"updated_by_user_id": operatorUserID,
+			"updated_at":         now,
+		}).Error; err != nil {
+			return err
+		}
+		return s.audit.logAttendanceStatusChange(tx, record, operatorUserID, oldStatus, status, now)
+	})
+}
+
+func (s *AttendanceService) UpsertAttendanceStatusForStudent(sessionID, studentID uint64, status int, operatorUserID uint64, allowOverwrite bool) error {
+	now := time.Now()
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		lesson, group, relation, err := s.loadAttendanceStudentContext(tx, sessionID, studentID)
+		if err != nil {
+			return err
+		}
+
+		var record model.AttendanceRecord
+		err = tx.Where("course_group_lesson_id = ? AND student_id = ?", lesson.ID, studentID).First(&record).Error
+		if err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			record = model.AttendanceRecord{
+				TermID:              group.TermID,
+				CourseID:            group.CourseID,
+				CourseGroupLessonID: lesson.ID,
+				StudentID:           studentID,
+				ClassID:             relation.ClassID,
+				AttendanceStatus:    status,
+				UpdatedByUserID:     &operatorUserID,
+				CreatedAt:           now,
+				UpdatedAt:           now,
+			}
+			if err := tx.Create(&record).Error; err != nil {
+				return err
+			}
+			return s.audit.logAttendanceStatusCreate(tx, record, operatorUserID, status, now)
+		}
+		if !allowOverwrite {
+			return ErrAttendanceRecordLocked
+		}
+		if record.AttendanceStatus == status {
+			return nil
+		}
+		oldStatus := record.AttendanceStatus
 		if err := tx.Model(&record).Updates(map[string]interface{}{
 			"attendance_status":  status,
 			"updated_by_user_id": operatorUserID,
@@ -152,45 +159,44 @@ func (s *AttendanceService) SubmitAttendanceStatusesForClass(checkID uint64, ope
 	now := time.Now()
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		for _, item := range items {
-			var record model.AttendanceRecord
-			if err := tx.Where("id = ? AND course_group_lesson_id = ?", item.AttendanceRecordID, lesson.ID).First(&record).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
+			_, group, relation, err := s.loadAttendanceStudentContext(tx, lesson.ID, item.StudentRefID)
+			if err != nil {
+				if IsServiceError(err, ErrAttendanceRecordNotFound) || IsServiceError(err, ErrCourseGroupLessonNotFound) {
 					result.IgnoredCount++
 					continue
 				}
 				return err
 			}
-			if classID != nil {
-				allowed, err := s.attendance.AttendanceRecordBelongsToClass(checkID, record.ID, *classID)
-				if err != nil {
-					return err
-				}
-				if !allowed {
-					result.IgnoredCount++
-					continue
-				}
-			}
-			if record.AttendanceStatus != model.AttendanceUnset {
+			if classID != nil && (relation.ClassID == nil || *relation.ClassID != *classID) {
 				result.IgnoredCount++
 				continue
 			}
 
-			update := map[string]interface{}{
-				"attendance_status":  item.Status,
-				"updated_by_user_id": operatorUserID,
-				"updated_at":         now,
-			}
-			txResult := tx.Model(&model.AttendanceRecord{}).
-				Where("id = ? AND course_group_lesson_id = ? AND attendance_status = ?", record.ID, lesson.ID, model.AttendanceUnset).
-				Updates(update)
-			if txResult.Error != nil {
-				return txResult.Error
-			}
-			if txResult.RowsAffected == 0 {
+			var record model.AttendanceRecord
+			err = tx.Where("course_group_lesson_id = ? AND student_id = ?", lesson.ID, item.StudentRefID).First(&record).Error
+			if err == nil {
 				result.IgnoredCount++
 				continue
 			}
-			if err := s.audit.logAttendanceStatusChange(tx, record, operatorUserID, model.AttendanceUnset, item.Status, now); err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+
+			record = model.AttendanceRecord{
+				TermID:              group.TermID,
+				CourseID:            group.CourseID,
+				CourseGroupLessonID: lesson.ID,
+				StudentID:           item.StudentRefID,
+				ClassID:             relation.ClassID,
+				AttendanceStatus:    item.Status,
+				UpdatedByUserID:     &operatorUserID,
+				CreatedAt:           now,
+				UpdatedAt:           now,
+			}
+			if err := tx.Create(&record).Error; err != nil {
+				return err
+			}
+			if err := s.audit.logAttendanceStatusCreate(tx, record, operatorUserID, item.Status, now); err != nil {
 				return err
 			}
 			result.AppliedCount++
@@ -274,6 +280,31 @@ func (s *AttendanceService) CompleteAttendanceSession(checkID uint64, operatorUs
 		return ErrAttendanceDeadlinePassed
 	}
 	return nil
+}
+
+func (s *AttendanceService) loadAttendanceStudentContext(tx *gorm.DB, sessionID, studentID uint64) (model.CourseGroupLesson, model.CourseGroup, model.CourseGroupStudent, error) {
+	var lesson model.CourseGroupLesson
+	if err := tx.First(&lesson, sessionID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.CourseGroupLesson{}, model.CourseGroup{}, model.CourseGroupStudent{}, ErrCourseGroupLessonNotFound
+		}
+		return model.CourseGroupLesson{}, model.CourseGroup{}, model.CourseGroupStudent{}, err
+	}
+	var group model.CourseGroup
+	if err := tx.First(&group, lesson.CourseGroupID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.CourseGroupLesson{}, model.CourseGroup{}, model.CourseGroupStudent{}, ErrCourseGroupNotFound
+		}
+		return model.CourseGroupLesson{}, model.CourseGroup{}, model.CourseGroupStudent{}, err
+	}
+	var relation model.CourseGroupStudent
+	if err := tx.Where("course_group_id = ? AND student_id = ? AND status = 1", lesson.CourseGroupID, studentID).First(&relation).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.CourseGroupLesson{}, model.CourseGroup{}, model.CourseGroupStudent{}, ErrAttendanceRecordNotFound
+		}
+		return model.CourseGroupLesson{}, model.CourseGroup{}, model.CourseGroupStudent{}, err
+	}
+	return lesson, group, relation, nil
 }
 
 func (s *AttendanceService) AbandonAttendanceSession(checkID uint64, withinDeadline func(model.CourseGroupLesson, time.Time) bool) error {

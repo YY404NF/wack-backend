@@ -9,11 +9,10 @@ const (
 
 	UserStatusActive  = 1
 	UserStatusFrozen  = 2
-	AttendanceUnset   = 0
-	AttendancePresent = 1
-	AttendanceLate    = 2
-	AttendanceAbsent  = 3
-	AttendanceOnLeave = 4
+	AttendancePresent = 0
+	AttendanceLate    = 1
+	AttendanceAbsent  = 2
+	AttendanceOnLeave = 3
 )
 
 type User struct {
@@ -151,7 +150,7 @@ type AttendanceRecord struct {
 	CourseGroupLessonID uint64    `gorm:"column:course_group_lesson_id;not null;uniqueIndex:uk_lesson_student;index:idx_term_lesson_id" json:"course_group_lesson_id"`
 	StudentID           uint64    `gorm:"column:student_id;not null;uniqueIndex:uk_lesson_student;index:idx_term_student;index:idx_term_student_status" json:"student_id"`
 	ClassID             *uint64   `gorm:"column:class_id;index:idx_term_class;index:idx_term_class_status" json:"class_id"`
-	AttendanceStatus    int       `gorm:"column:attendance_status;not null;default:0;index:idx_term_student_status;index:idx_term_class_status;index:idx_term_course_status" json:"attendance_status"`
+	AttendanceStatus    int       `gorm:"column:attendance_status;not null;index:idx_term_student_status;index:idx_term_class_status;index:idx_term_course_status" json:"attendance_status"`
 	UpdatedByUserID     *uint64   `gorm:"column:updated_by_user_id;index:idx_term_updated_by_user_id" json:"updated_by_user_id"`
 	UpdatedAt           time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 	CreatedAt           time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`

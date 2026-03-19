@@ -9,8 +9,8 @@ type UpdateAttendanceStatusRequest struct {
 }
 
 type SubmitAttendanceStatusItem struct {
-	AttendanceRecordID uint64 `json:"attendance_record_id" binding:"required"`
-	Status             int    `json:"status" binding:"required"`
+	StudentRefID uint64 `json:"student_ref_id" binding:"required"`
+	Status       int    `json:"status" binding:"required"`
 }
 
 type SubmitAttendanceStatusesRequest struct {
