@@ -19,6 +19,9 @@
 | `WACK_DB_PATH` | `/root/wack_db/wack.db` |
 | `WACK_JWT_SECRET` | `replace-with-a-random-secret` |
 | `WACK_CORS_ALLOW_ORIGIN` | `http://8.159.159.150` |
+| `WACK_REDIS_ADDR` | `127.0.0.1:6379` |
+| `WACK_REDIS_PASSWORD` | `` |
+| `WACK_REDIS_DB` | `0` |
 
 ## Workflow 行为
 

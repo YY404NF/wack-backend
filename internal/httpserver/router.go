@@ -7,16 +7,17 @@ import (
 	"gorm.io/gorm"
 
 	"wack-backend/internal/config"
+	"wack-backend/internal/service"
 )
 
-func NewRouter(cfg config.Config, db *gorm.DB) (*gin.Engine, error) {
+func NewRouter(cfg config.Config, db *gorm.DB, sessions *service.SessionService) (*gin.Engine, error) {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery(), corsMiddleware(cfg))
 
-	authHandler := newAuthHandler(cfg, db)
-	apiHandler := newAPIHandler(db)
-	authMW := authMiddleware(cfg, db)
+	authHandler := newAuthHandler(cfg, db, sessions)
+	apiHandler := newAPIHandler(db, sessions)
+	authMW := authMiddleware(cfg, db, sessions)
 
 	api := router.Group("/api")
 	{
@@ -26,16 +27,18 @@ func NewRouter(cfg config.Config, db *gorm.DB) (*gin.Engine, error) {
 		protected := api.Group("")
 		protected.Use(authMW)
 		mountFreeTimeRoutes(protected, apiHandler)
+		mountMetaRoutes(protected, apiHandler)
 
 		admin := protected.Group("/admin")
 		admin.Use(requireRole(1))
 		mountUserRoutes(admin, apiHandler)
 		mountClassRoutes(admin, apiHandler)
+		mountStudentRoutes(admin, apiHandler)
 		mountCourseRoutes(admin, apiHandler)
 		mountSystemSettingRoutes(admin, apiHandler)
 
 		student := protected.Group("/student")
-		student.Use(requireRole(2))
+		student.Use(requireRole(2, 3))
 		mountAttendanceRoutes(admin, student, apiHandler)
 	}
 

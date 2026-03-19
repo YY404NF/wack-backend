@@ -6,12 +6,13 @@ import (
 	"wack-backend/internal/httpserver/dto"
 	"wack-backend/internal/model"
 	"wack-backend/internal/query"
+	"wack-backend/internal/service"
 )
 
 func (h *apiHandler) listFreeTimes(c *gin.Context) {
 	page, pageSize := parsePage(c)
 	user, _ := currentUser(c)
-	items, total, err := h.freeTimes.ListFreeTimes(c.Query("term"), c.Query("student_id"), user, page, pageSize)
+	items, total, err := h.freeTimes.ListFreeTimes(c.Query("term"), c.Query("login_id"), user, page, pageSize)
 	if err != nil {
 		fail(c, 500, "list free times failed")
 		return
@@ -28,8 +29,8 @@ func (h *apiHandler) createFreeTime(c *gin.Context) {
 	}
 
 	targetUserID := user.ID
-	if user.Role == model.RoleAdmin && req.StudentID != "" {
-		target, err := h.findUserByStudentID(req.StudentID)
+	if user.Role == model.RoleAdmin && req.LoginID != "" {
+		target, err := h.findUserByLoginID(req.LoginID)
 		if err != nil {
 			fail(c, 404, "user not found")
 			return
@@ -37,15 +38,16 @@ func (h *apiHandler) createFreeTime(c *gin.Context) {
 		targetUserID = target.ID
 	}
 
-	item, err := h.freeTimes.CreateFreeTime(model.StudentFreeTime{
-		Term:      req.Term,
-		UserID:    targetUserID,
-		Weekday:   req.Weekday,
-		Section:   req.Section,
-		FreeWeeks: req.FreeWeeks,
-	})
+	item, err := h.freeTimes.CreateFreeTime(req.Term, targetUserID, req.Weekday, req.Section, req.FreeWeeks)
 	if err != nil {
-		fail(c, 400, "create free time failed")
+		switch {
+		case service.IsServiceError(err, service.ErrUserNotFound):
+			fail(c, 404, "user not found")
+		case service.IsServiceError(err, service.ErrInvalidInput):
+			fail(c, 400, "invalid request")
+		default:
+			fail(c, 400, "create free time failed")
+		}
 		return
 	}
 	ok(c, item)
@@ -76,8 +78,8 @@ func (h *apiHandler) updateFreeTime(c *gin.Context) {
 	}
 
 	targetUserID := item.UserID
-	if user.Role == model.RoleAdmin && req.StudentID != "" {
-		target, err := h.findUserByStudentID(req.StudentID)
+	if user.Role == model.RoleAdmin && req.LoginID != "" {
+		target, err := h.findUserByLoginID(req.LoginID)
 		if err != nil {
 			fail(c, 404, "user not found")
 			return
@@ -88,7 +90,16 @@ func (h *apiHandler) updateFreeTime(c *gin.Context) {
 	}
 
 	if err := h.freeTimes.UpdateFreeTime(id, req.Term, targetUserID, req.Weekday, req.Section, req.FreeWeeks); err != nil {
-		fail(c, 400, "update free time failed")
+		switch {
+		case service.IsServiceError(err, service.ErrFreeTimeNotFound):
+			fail(c, 404, "free time not found")
+		case service.IsServiceError(err, service.ErrUserNotFound):
+			fail(c, 404, "user not found")
+		case service.IsServiceError(err, service.ErrInvalidInput):
+			fail(c, 400, "invalid request")
+		default:
+			fail(c, 400, "update free time failed")
+		}
 		return
 	}
 	ok(c, gin.H{})

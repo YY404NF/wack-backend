@@ -57,12 +57,15 @@ jobs:
           WACK_DB_PATH: ${{ secrets.WACK_DB_PATH }}
           WACK_JWT_SECRET: ${{ secrets.WACK_JWT_SECRET }}
           WACK_CORS_ALLOW_ORIGIN: ${{ secrets.WACK_CORS_ALLOW_ORIGIN }}
+          WACK_REDIS_ADDR: ${{ secrets.WACK_REDIS_ADDR }}
+          WACK_REDIS_PASSWORD: ${{ secrets.WACK_REDIS_PASSWORD }}
+          WACK_REDIS_DB: ${{ secrets.WACK_REDIS_DB }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
-          envs: BACKEND_DEPLOY_PATH,BACKEND_SERVICE_NAME,BACKEND_SERVICE_USER,BACKEND_PORT,WACK_DB_PATH,WACK_JWT_SECRET,WACK_CORS_ALLOW_ORIGIN
+          envs: BACKEND_DEPLOY_PATH,BACKEND_SERVICE_NAME,BACKEND_SERVICE_USER,BACKEND_PORT,WACK_DB_PATH,WACK_JWT_SECRET,WACK_CORS_ALLOW_ORIGIN,WACK_REDIS_ADDR,WACK_REDIS_PASSWORD,WACK_REDIS_DB
           script: |
             set -eu
             mkdir -p /tmp/wack-backend-deploy/extracted
@@ -76,4 +79,7 @@ jobs:
               "$BACKEND_PORT" \
               "$WACK_DB_PATH" \
               "$WACK_JWT_SECRET" \
-              "$WACK_CORS_ALLOW_ORIGIN"
+              "$WACK_CORS_ALLOW_ORIGIN" \
+              "$WACK_REDIS_ADDR" \
+              "$WACK_REDIS_PASSWORD" \
+              "$WACK_REDIS_DB"

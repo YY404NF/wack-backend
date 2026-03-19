@@ -1,18 +1,17 @@
 package dto
 
-import "wack-backend/internal/model"
-
-type ReplaceCourseStudentsRequest struct {
-	Students []struct {
-		StudentID string `json:"student_id"`
-		RealName  string `json:"real_name"`
-	} `json:"students"`
-}
-
-type ReplaceCourseClassesRequest struct {
+type CourseGroupClassesRequest struct {
 	ClassIDs []uint64 `json:"class_ids"`
 }
 
-type ReplaceCourseSessionsRequest struct {
-	Sessions []model.CourseSession `json:"sessions"`
+type CourseGroupStudentsRequest struct {
+	StudentIDs []uint64 `json:"student_ids"`
+}
+
+type CourseGroupLessonRequest struct {
+	WeekNo       int    `json:"week_no"`
+	Weekday      int    `json:"weekday"`
+	Section      int    `json:"section"`
+	BuildingName string `json:"building_name"`
+	RoomName     string `json:"room_name"`
 }

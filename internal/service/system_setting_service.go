@@ -1,6 +1,8 @@
 package service
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -46,50 +48,79 @@ func inferScheduleByDate(now time.Time) string {
 }
 
 func (s *SystemSettingService) GetSystemSetting() (model.SystemSetting, error) {
-	var setting model.SystemSetting
-	if err := s.db.Order("id ASC").First(&setting).Error; err != nil {
+	var term model.Term
+	if err := s.db.Order("id DESC").First(&term).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			setting = model.SystemSetting{
+			return model.SystemSetting{
 				CurrentTermStartDate: "",
 				CurrentSchedule:      inferScheduleByDate(time.Now()),
-			}
-			if err := s.db.Create(&setting).Error; err != nil {
-				return model.SystemSetting{}, err
-			}
-			return setting, nil
+			}, nil
 		}
 		return model.SystemSetting{}, err
 	}
-	expectedSchedule := inferScheduleByDate(time.Now())
-	normalizedSchedule := normalizeSchedule(setting.CurrentSchedule)
-	if normalizedSchedule != expectedSchedule {
-		if err := s.db.Model(&setting).Update("current_schedule", expectedSchedule).Error; err != nil {
-			return model.SystemSetting{}, err
-		}
-		setting.CurrentSchedule = expectedSchedule
-		return setting, nil
-	}
-	if normalizedSchedule != setting.CurrentSchedule {
-		if err := s.db.Model(&setting).Update("current_schedule", normalizedSchedule).Error; err != nil {
-			return model.SystemSetting{}, err
-		}
-		setting.CurrentSchedule = normalizedSchedule
-	}
-	return setting, nil
+
+	return model.SystemSetting{
+		ID:                   term.ID,
+		CurrentTermStartDate: term.TermStartDate,
+		CurrentSchedule:      normalizeSchedule(inferScheduleByDate(time.Now())),
+		CreatedAt:            term.CreatedAt,
+		UpdatedAt:            term.UpdatedAt,
+	}, nil
 }
 
 func (s *SystemSettingService) UpdateSystemSetting(startDate string) (model.SystemSetting, error) {
-	setting, err := s.GetSystemSetting()
+	startDate = strings.TrimSpace(startDate)
+	if startDate == "" {
+		return model.SystemSetting{}, ErrInvalidInput
+	}
+	parsedDate, err := time.Parse("2006-01-02", startDate)
 	if err != nil {
+		return model.SystemSetting{}, ErrInvalidInput
+	}
+	if parsedDate.Weekday() != time.Monday {
+		return model.SystemSetting{}, ErrInvalidInput
+	}
+
+	var term model.Term
+	err = s.db.Order("id DESC").First(&term).Error
+	switch {
+	case err == nil:
+		if err := s.db.Model(&term).Update("term_start_date", startDate).Error; err != nil {
+			return model.SystemSetting{}, err
+		}
+		if err := s.db.First(&term, term.ID).Error; err != nil {
+			return model.SystemSetting{}, err
+		}
+	case err == gorm.ErrRecordNotFound:
+		term = model.Term{
+			Name:          buildTermName(parsedDate),
+			TermStartDate: startDate,
+		}
+		if err := s.db.Create(&term).Error; err != nil {
+			return model.SystemSetting{}, err
+		}
+	default:
 		return model.SystemSetting{}, err
 	}
-	if err := s.db.Model(&setting).Updates(map[string]any{
-		"current_term_start_date": startDate,
-	}).Error; err != nil {
-		return model.SystemSetting{}, err
+
+	return model.SystemSetting{
+		ID:                   term.ID,
+		CurrentTermStartDate: term.TermStartDate,
+		CurrentSchedule:      inferScheduleByDate(time.Now()),
+		CreatedAt:            term.CreatedAt,
+		UpdatedAt:            term.UpdatedAt,
+	}, nil
+}
+
+func buildTermName(start time.Time) string {
+	year := start.Year()
+	month := start.Month()
+	termNo := 1
+	if month >= time.July {
+		termNo = 1
+	} else {
+		termNo = 2
+		year = year - 1
 	}
-	if err := s.db.First(&setting, setting.ID).Error; err != nil {
-		return model.SystemSetting{}, err
-	}
-	return setting, nil
+	return fmt.Sprintf("%d-%d-%d", year, year+1, termNo)
 }

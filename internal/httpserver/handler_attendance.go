@@ -41,6 +41,7 @@ func (h *apiHandler) adminFreeTimeCalendar(c *gin.Context) {
 }
 
 func (h *apiHandler) studentAvailableCourses(c *gin.Context) {
+	user, _ := currentUser(c)
 	now := time.Now()
 	weekday := int(now.Weekday())
 	if weekday == 0 {
@@ -58,7 +59,16 @@ func (h *apiHandler) studentAvailableCourses(c *gin.Context) {
 		return
 	}
 
-	sessions, err := h.attendance.AvailableSessions(weekday, currentWeek)
+	var sessions []query.SessionWithCourse
+	if user.Role == model.RoleCommissioner {
+		if user.ManagedClassID == nil {
+			ok(c, []query.AvailableCourseItem{})
+			return
+		}
+		sessions, err = h.attendance.AvailableCourseGroupLessonsForClass(weekday, currentWeek, *user.ManagedClassID)
+	} else {
+		sessions, err = h.attendance.AvailableCourseGroupLessons(weekday, currentWeek)
+	}
 	if err != nil {
 		fail(c, 500, "load available courses failed")
 		return
@@ -66,71 +76,102 @@ func (h *apiHandler) studentAvailableCourses(c *gin.Context) {
 
 	items := make([]query.AvailableCourseItem, 0, len(sessions))
 	for _, session := range sessions {
-		if !h.withinDeadline(session.CourseSession, now) {
+		lesson := model.CourseGroupLesson{
+			ID:            session.ID,
+			CourseGroupID: 0,
+			WeekNo:        session.WeekNo,
+			Weekday:       session.Weekday,
+			Section:       session.Section,
+			BuildingName:  session.BuildingName,
+			RoomName:      session.RoomName,
+		}
+		canEnter := h.withinDeadline(lesson, now)
+		if user.Role != model.RoleCommissioner && !canEnter {
 			continue
 		}
-		deadline, err := h.attendanceDeadline(session.CourseSession, now)
+		deadline, err := h.attendanceDeadline(lesson, now)
 		if err != nil {
 			continue
 		}
 		items = append(items, query.AvailableCourseItem{
-			CourseSessionID:   session.ID,
-			CourseID:          session.CourseID,
-			CourseName:        session.CourseName,
-			TeacherName:       session.TeacherName,
-			WeekNo:            session.WeekNo,
-			Weekday:           session.Weekday,
-			Section:           session.Section,
-			BuildingName:      session.BuildingName,
-			RoomName:          session.RoomName,
-			StartedAt:         session.StartedAt,
-			CanEnter:          true,
-			EnterDeadline:     deadline.Format("2006-01-02 15:04:05"),
-			AttendanceCheckID: session.AttendanceCheckID,
+			CourseGroupLessonID: session.ID,
+			CourseID:            session.CourseID,
+			CourseName:          session.CourseName,
+			TeacherName:         session.TeacherName,
+			WeekNo:              session.WeekNo,
+			Weekday:             session.Weekday,
+			Section:             session.Section,
+			BuildingName:        session.BuildingName,
+			RoomName:            session.RoomName,
+			CanEnter:            canEnter,
+			EnterDeadline:       deadline.Format("2006-01-02 15:04:05"),
 		})
 	}
 	ok(c, items)
 }
 
-func (h *apiHandler) studentEnterAttendanceCheck(c *gin.Context) {
+func (h *apiHandler) studentEnterAttendanceSession(c *gin.Context) {
 	user, _ := currentUser(c)
-	var req dto.EnterAttendanceCheckRequest
+	var req dto.EnterAttendanceSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
 		return
 	}
 
-	attendanceCheck, err := h.attendance.EnterAttendanceCheck(req.CourseSessionID, user, h.withinDeadline)
+	if user.Role == model.RoleCommissioner {
+		if user.ManagedClassID == nil {
+			fail(c, 403, "commissioner class is not configured")
+			return
+		}
+		belongs, err := h.attendance.CourseGroupLessonBelongsToClass(req.CourseGroupLessonID, *user.ManagedClassID)
+		if err != nil {
+			fail(c, 500, "check course group lesson scope failed")
+			return
+		}
+		if !belongs {
+			fail(c, 403, "course group lesson is out of scope")
+			return
+		}
+	}
+
+	lessonID, err := h.attendance.EnterAttendanceSession(req.CourseGroupLessonID, user, h.withinDeadline)
 	if err != nil {
 		switch {
-		case service.IsServiceError(err, service.ErrCourseSessionNotFound):
-			fail(c, 404, "course session not found")
+		case service.IsServiceError(err, service.ErrCourseGroupLessonNotFound):
+			fail(c, 404, "course group lesson not found")
 		case service.IsServiceError(err, service.ErrAttendanceDeadlinePassed):
 			fail(c, 403, "attendance entry deadline passed")
 		default:
-			fail(c, 500, "enter attendance check failed")
+			fail(c, 500, "enter attendance session failed")
 		}
 		return
 	}
-	c.Params = append(c.Params, gin.Param{Key: "id", Value: fmt.Sprintf("%d", attendanceCheck.ID)})
-	h.studentGetAttendanceCheck(c)
+	c.Params = append(c.Params, gin.Param{Key: "id", Value: fmt.Sprintf("%d", lessonID)})
+	h.studentGetAttendanceSession(c)
 }
 
-func (h *apiHandler) studentGetAttendanceCheck(c *gin.Context) {
+func (h *apiHandler) studentGetAttendanceSession(c *gin.Context) {
+	user, _ := currentUser(c)
 	id, err := parseUintParam(c, "id")
 	if err != nil {
 		fail(c, 400, err.Error())
 		return
 	}
-	attendanceCheck, session, course, details, err := h.attendance.GetAttendanceCheck(id)
+	var managedClassID *uint64
+	if user.Role == model.RoleCommissioner {
+		if user.ManagedClassID == nil {
+			fail(c, 403, "commissioner class is not configured")
+			return
+		}
+		managedClassID = user.ManagedClassID
+	}
+	session, course, records, err := h.attendance.GetAttendanceSessionForClass(id, managedClassID)
 	if err != nil {
 		switch {
-		case service.IsServiceError(err, service.ErrAttendanceCheckNotFound):
-			fail(c, 404, "attendance check not found")
-		case service.IsServiceError(err, service.ErrCourseSessionNotFound):
-			fail(c, 404, "course session not found")
+		case service.IsServiceError(err, service.ErrCourseGroupLessonNotFound):
+			fail(c, 404, "course group lesson not found")
 		default:
-			fail(c, 500, "load attendance check failed")
+			fail(c, 500, "load attendance session failed")
 		}
 		return
 	}
@@ -138,11 +179,16 @@ func (h *apiHandler) studentGetAttendanceCheck(c *gin.Context) {
 		fail(c, 403, "attendance entry deadline passed")
 		return
 	}
+	classGroups, err := h.attendance.AttendanceClassGroupsForClass(id, managedClassID)
+	if err != nil {
+		fail(c, 500, "load attendance classes failed")
+		return
+	}
 	ok(c, gin.H{
-		"attendance_check": attendanceCheck,
-		"course_session":   session,
-		"course":           course,
-		"students":         details,
+		"course_group_lesson": session,
+		"course":              course,
+		"class_groups":        classGroups,
+		"students":            records,
 	})
 }
 
@@ -163,74 +209,144 @@ func (h *apiHandler) studentUpdateAttendanceStatus(c *gin.Context) {
 		return
 	}
 
-	var detail model.AttendanceDetail
+	var detail model.AttendanceRecord
 	if err := h.db.First(&detail, id).Error; err != nil {
-		fail(c, 404, "attendance detail not found")
+		fail(c, 404, "attendance record not found")
 		return
 	}
-	var attendanceCheck model.AttendanceCheck
-	if err := h.db.First(&attendanceCheck, detail.AttendanceCheckID).Error; err != nil {
-		fail(c, 404, "attendance check not found")
+	var lesson model.CourseGroupLesson
+	if err := h.db.First(&lesson, detail.CourseGroupLessonID).Error; err != nil {
+		fail(c, 404, "course group lesson not found")
 		return
 	}
-	var session model.CourseSession
-	if err := h.db.First(&session, attendanceCheck.CourseSessionID).Error; err != nil {
-		fail(c, 404, "course session not found")
-		return
-	}
-	if !h.withinDeadline(session, time.Now()) {
+	if !h.withinDeadline(lesson, time.Now()) {
 		fail(c, 403, "attendance entry deadline passed")
 		return
 	}
 
 	if err := h.attendance.UpdateAttendanceStatus(id, req.Status, user.ID, false); err != nil {
-		fail(c, 500, "update attendance status failed")
+		switch {
+		case service.IsServiceError(err, service.ErrAttendanceRecordNotFound):
+			fail(c, 404, "attendance record not found")
+		case service.IsServiceError(err, service.ErrAttendanceRecordLocked):
+			ok(c, gin.H{"applied": false, "ignored": true})
+		default:
+			fail(c, 500, "update attendance status failed")
+		}
 		return
 	}
 	ok(c, gin.H{})
 }
 
-func (h *apiHandler) studentCompleteAttendanceCheck(c *gin.Context) {
+func (h *apiHandler) studentSubmitAttendanceStatuses(c *gin.Context) {
+	user, _ := currentUser(c)
 	id, err := parseUintParam(c, "id")
 	if err != nil {
 		fail(c, 400, err.Error())
 		return
 	}
-	if err := h.attendance.CompleteAttendanceCheck(id, h.withinDeadline); err != nil {
+
+	var req dto.SubmitAttendanceStatusesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, 400, "invalid request")
+		return
+	}
+
+	items := make([]service.AttendanceStatusInput, 0, len(req.Items))
+	for _, item := range req.Items {
+		if item.Status < model.AttendancePresent || item.Status > model.AttendanceOnLeave {
+			fail(c, 400, "invalid status")
+			return
+		}
+		items = append(items, service.AttendanceStatusInput{
+			AttendanceRecordID: item.AttendanceRecordID,
+			Status:             item.Status,
+		})
+	}
+
+	var managedClassID *uint64
+	if user.Role == model.RoleCommissioner {
+		if user.ManagedClassID == nil {
+			fail(c, 403, "commissioner class is not configured")
+			return
+		}
+		managedClassID = user.ManagedClassID
+	}
+	result, err := h.attendance.SubmitAttendanceStatusesForClass(id, user.ID, items, managedClassID, h.withinDeadline)
+	if err != nil {
 		switch {
-		case service.IsServiceError(err, service.ErrAttendanceCheckNotFound):
-			fail(c, 404, "attendance check not found")
-		case service.IsServiceError(err, service.ErrCourseSessionNotFound):
-			fail(c, 404, "course session not found")
+		case service.IsServiceError(err, service.ErrCourseGroupLessonNotFound):
+			fail(c, 404, "course group lesson not found")
 		case service.IsServiceError(err, service.ErrAttendanceDeadlinePassed):
 			fail(c, 403, "attendance entry deadline passed")
 		default:
-			fail(c, 500, "complete attendance check failed")
+			fail(c, 500, "submit attendance statuses failed")
 		}
 		return
 	}
-	ok(c, gin.H{"attendance_check_id": id, "completed": true})
+
+	ok(c, result)
 }
 
-func (h *apiHandler) adminGetAttendanceCheck(c *gin.Context) {
+func (h *apiHandler) studentCompleteAttendanceSession(c *gin.Context) {
+	user, _ := currentUser(c)
 	id, err := parseUintParam(c, "id")
 	if err != nil {
 		fail(c, 400, err.Error())
 		return
 	}
-	attendanceCheck, _, _, details, err := h.attendance.GetAttendanceCheck(id)
+	if err := h.attendance.CompleteAttendanceSession(id, user.ID, h.withinDeadline); err != nil {
+		switch {
+		case service.IsServiceError(err, service.ErrCourseGroupLessonNotFound):
+			fail(c, 404, "course group lesson not found")
+		case service.IsServiceError(err, service.ErrAttendanceDeadlinePassed):
+			fail(c, 403, "attendance entry deadline passed")
+		default:
+			fail(c, 500, "complete attendance session failed")
+		}
+		return
+	}
+	ok(c, gin.H{"course_group_lesson_id": id, "completed": true})
+}
+
+func (h *apiHandler) studentAbandonAttendanceSession(c *gin.Context) {
+	id, err := parseUintParam(c, "id")
+	if err != nil {
+		fail(c, 400, err.Error())
+		return
+	}
+	if err := h.attendance.AbandonAttendanceSession(id, h.withinDeadline); err != nil {
+		switch {
+		case service.IsServiceError(err, service.ErrCourseGroupLessonNotFound):
+			fail(c, 404, "course group lesson not found")
+		case service.IsServiceError(err, service.ErrAttendanceDeadlinePassed):
+			fail(c, 403, "attendance entry deadline passed")
+		default:
+			fail(c, 500, "abandon attendance session failed")
+		}
+		return
+	}
+	ok(c, gin.H{"course_group_lesson_id": id, "abandoned": true})
+}
+
+func (h *apiHandler) adminGetAttendanceSession(c *gin.Context) {
+	id, err := parseUintParam(c, "id")
+	if err != nil {
+		fail(c, 400, err.Error())
+		return
+	}
+	_, _, records, err := h.attendance.GetAttendanceSession(id)
 	if err != nil {
 		switch {
-		case service.IsServiceError(err, service.ErrAttendanceCheckNotFound):
-			fail(c, 404, "attendance check not found")
+		case service.IsServiceError(err, service.ErrCourseGroupLessonNotFound):
+			fail(c, 404, "course group lesson not found")
 		default:
-			fail(c, 500, "load attendance check failed")
+			fail(c, 500, "load attendance session failed")
 		}
 		return
 	}
 	ok(c, gin.H{
-		"attendance_check": attendanceCheck,
-		"details":          details,
+		"attendance_records": records,
 	})
 }
 

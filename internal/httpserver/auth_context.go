@@ -11,6 +11,7 @@ import (
 
 	"wack-backend/internal/config"
 	"wack-backend/internal/model"
+	"wack-backend/internal/service"
 )
 
 type jwtClaims struct {
@@ -19,7 +20,7 @@ type jwtClaims struct {
 	jwt.RegisteredClaims
 }
 
-func authMiddleware(cfg config.Config, db *gorm.DB) gin.HandlerFunc {
+func authMiddleware(cfg config.Config, db *gorm.DB, sessions *service.SessionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -27,12 +28,13 @@ func authMiddleware(cfg config.Config, db *gorm.DB) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		tokenString := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer"))
-		if tokenString == authHeader {
+		const bearerPrefix = "Bearer "
+		if !strings.HasPrefix(authHeader, bearerPrefix) {
 			fail(c, 401, "invalid authorization header")
 			c.Abort()
 			return
 		}
+		tokenString := strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
 
 		token, err := jwt.ParseWithClaims(tokenString, &jwtClaims{}, func(token *jwt.Token) (interface{}, error) {
 			if token.Method != jwt.SigningMethodHS256 {
@@ -52,6 +54,23 @@ func authMiddleware(cfg config.Config, db *gorm.DB) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		if claims.ID == "" {
+			fail(c, 401, "invalid token")
+			c.Abort()
+			return
+		}
+
+		hasSession, err := sessions.HasSession(c.Request.Context(), claims.ID)
+		if err != nil {
+			fail(c, 500, "check session failed")
+			c.Abort()
+			return
+		}
+		if !hasSession {
+			fail(c, 401, "session expired")
+			c.Abort()
+			return
+		}
 
 		var user model.User
 		if err := db.First(&user, claims.UserID).Error; err != nil {
@@ -66,6 +85,7 @@ func authMiddleware(cfg config.Config, db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.Set("currentUser", user)
+		c.Set("currentTokenID", claims.ID)
 		c.Next()
 	}
 }
@@ -98,4 +118,13 @@ func currentUser(c *gin.Context) (model.User, bool) {
 	}
 	user, ok := value.(model.User)
 	return user, ok
+}
+
+func currentTokenID(c *gin.Context) (string, bool) {
+	value, exists := c.Get("currentTokenID")
+	if !exists {
+		return "", false
+	}
+	tokenID, ok := value.(string)
+	return tokenID, ok
 }

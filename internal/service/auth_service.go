@@ -26,14 +26,14 @@ func (s *AuthService) HasAnyAdmin() (bool, error) {
 	return count > 0, nil
 }
 
-func (s *AuthService) InitializeSystem(studentID, realName, password string) error {
+func (s *AuthService) InitializeSystem(loginID, realName, password string) error {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 
 	admin := model.User{
-		StudentID:    studentID,
+		LoginID:      loginID,
 		PasswordHash: string(hash),
 		RealName:     realName,
 		Role:         model.RoleAdmin,
@@ -52,9 +52,9 @@ func (s *AuthService) InitializeSystem(studentID, realName, password string) err
 	})
 }
 
-func (s *AuthService) Authenticate(studentID, password string) (model.User, error) {
+func (s *AuthService) Authenticate(loginID, password string) (model.User, error) {
 	var user model.User
-	if err := s.db.First(&user, "student_id = ?", studentID).Error; err != nil {
+	if err := s.db.First(&user, "login_id = ?", loginID).Error; err != nil {
 		return model.User{}, ErrInvalidCredentials
 	}
 	if user.Status != model.UserStatusActive {
@@ -87,14 +87,14 @@ func (s *AuthService) ChangePassword(userID uint64, oldPassword, newPassword str
 	return s.db.Model(&user).Update("password_hash", string(hash)).Error
 }
 
-func (s *AuthService) UpdateProfile(userID uint64, studentID, realName string) (model.User, error) {
+func (s *AuthService) UpdateProfile(userID uint64, loginID, realName string) (model.User, error) {
 	var user model.User
 	if err := s.db.First(&user, userID).Error; err != nil {
 		return model.User{}, ErrUserNotFound
 	}
 	if err := s.db.Model(&user).Updates(map[string]interface{}{
-		"student_id": studentID,
-		"real_name":  realName,
+		"login_id":  loginID,
+		"real_name": realName,
 	}).Error; err != nil {
 		return model.User{}, err
 	}

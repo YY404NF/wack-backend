@@ -1,6 +1,8 @@
 package httpserver
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,12 +15,17 @@ import (
 )
 
 type authHandler struct {
-	cfg  config.Config
-	auth *service.AuthService
+	cfg      config.Config
+	auth     *service.AuthService
+	sessions *service.SessionService
 }
 
-func newAuthHandler(cfg config.Config, db *gorm.DB) *authHandler {
-	return &authHandler{cfg: cfg, auth: service.NewAuthService(db)}
+func newAuthHandler(cfg config.Config, db *gorm.DB, sessions *service.SessionService) *authHandler {
+	return &authHandler{
+		cfg:      cfg,
+		auth:     service.NewAuthService(db),
+		sessions: sessions,
+	}
 }
 
 func (h *authHandler) login(c *gin.Context) {
@@ -38,7 +45,7 @@ func (h *authHandler) login(c *gin.Context) {
 		return
 	}
 
-	user, err := h.auth.Authenticate(req.StudentID, req.Password)
+	user, err := h.auth.Authenticate(req.LoginID, req.Password)
 	if err != nil {
 		switch {
 		case service.IsServiceError(err, service.ErrInvalidCredentials):
@@ -51,20 +58,35 @@ func (h *authHandler) login(c *gin.Context) {
 		return
 	}
 
-	token, err := h.signToken(user.ID, user.Role)
+	token, tokenID, expiresAt, err := h.signToken(user.ID, user.Role)
 	if err != nil {
 		fail(c, 500, "sign token failed")
+		return
+	}
+
+	if err := h.sessions.CreateSession(c.Request.Context(), service.SessionPayload{
+		TokenID:    tokenID,
+		UserID:     user.ID,
+		Account:    user.LoginID,
+		Role:       user.Role,
+		Status:     user.Status,
+		DeviceType: service.DeviceTypeForRole(user.Role),
+		IssuedAt:   time.Now(),
+		ExpiresAt:  expiresAt,
+	}); err != nil {
+		fail(c, 500, "create session failed")
 		return
 	}
 
 	ok(c, gin.H{
 		"token": token,
 		"user": gin.H{
-			"id":         user.ID,
-			"student_id": user.StudentID,
-			"real_name":  user.RealName,
-			"role":       user.Role,
-			"status":     user.Status,
+			"id":               user.ID,
+			"login_id":         user.LoginID,
+			"real_name":        user.RealName,
+			"role":             user.Role,
+			"status":           user.Status,
+			"managed_class_id": user.ManagedClassID,
 		},
 	})
 }
@@ -76,6 +98,26 @@ func (h *authHandler) me(c *gin.Context) {
 		return
 	}
 	ok(c, user)
+}
+
+func (h *authHandler) logout(c *gin.Context) {
+	user, exists := currentUser(c)
+	if !exists {
+		fail(c, 401, "unauthorized")
+		return
+	}
+
+	tokenID, exists := currentTokenID(c)
+	if !exists {
+		fail(c, 401, "unauthorized")
+		return
+	}
+
+	if err := h.sessions.DeleteSession(c.Request.Context(), tokenID, user.ID); err != nil {
+		fail(c, 500, "logout failed")
+		return
+	}
+	ok(c, gin.H{})
 }
 
 func (h *authHandler) changePassword(c *gin.Context) {
@@ -102,6 +144,11 @@ func (h *authHandler) changePassword(c *gin.Context) {
 		}
 		return
 	}
+
+	if err := h.sessions.DeleteAllUserSessions(c.Request.Context(), user.ID); err != nil {
+		fail(c, 500, "clear sessions failed")
+		return
+	}
 	ok(c, gin.H{})
 }
 
@@ -118,7 +165,7 @@ func (h *authHandler) updateProfile(c *gin.Context) {
 		return
 	}
 
-	updatedUser, err := h.auth.UpdateProfile(user.ID, req.StudentID, req.RealName)
+	updatedUser, err := h.auth.UpdateProfile(user.ID, req.LoginID, req.RealName)
 	if err != nil {
 		if service.IsServiceError(err, service.ErrUserNotFound) {
 			fail(c, 404, "user not found")
@@ -130,15 +177,34 @@ func (h *authHandler) updateProfile(c *gin.Context) {
 	ok(c, updatedUser)
 }
 
-func (h *authHandler) signToken(userID uint64, role int) (string, error) {
+func (h *authHandler) signToken(userID uint64, role int) (string, string, time.Time, error) {
+	tokenID, err := newTokenID()
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	now := time.Now()
+	expiresAt := now.Add(service.SessionTTLForRole(role))
 	claims := jwtClaims{
 		UserID: userID,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        tokenID,
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(now),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(h.cfg.JWTSecret))
+	signedToken, err := token.SignedString([]byte(h.cfg.JWTSecret))
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	return signedToken, tokenID, expiresAt, nil
+}
+
+func newTokenID() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
 }

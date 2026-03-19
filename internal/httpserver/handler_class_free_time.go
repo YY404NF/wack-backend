@@ -5,6 +5,7 @@ import (
 
 	"wack-backend/internal/httpserver/dto"
 	"wack-backend/internal/model"
+	"wack-backend/internal/service"
 )
 
 func (h *apiHandler) listClasses(c *gin.Context) {
@@ -25,7 +26,12 @@ func (h *apiHandler) createClass(c *gin.Context) {
 	}
 	classItem, err := h.classes.CreateClass(classItem)
 	if err != nil {
-		fail(c, 400, "create class failed")
+		switch {
+		case service.IsServiceError(err, service.ErrInvalidInput):
+			fail(c, 400, "invalid request")
+		default:
+			fail(c, 400, "create class failed")
+		}
 		return
 	}
 	ok(c, classItem)
@@ -58,7 +64,14 @@ func (h *apiHandler) updateClass(c *gin.Context) {
 	}
 	classItem, err := h.classes.UpdateClass(id, req)
 	if err != nil {
-		fail(c, 400, "update class failed")
+		switch {
+		case service.IsServiceError(err, service.ErrClassNotFound):
+			fail(c, 404, "class not found")
+		case service.IsServiceError(err, service.ErrInvalidInput):
+			fail(c, 400, "invalid request")
+		default:
+			fail(c, 400, "update class failed")
+		}
 		return
 	}
 	ok(c, classItem)
@@ -85,7 +98,12 @@ func (h *apiHandler) getClassStudents(c *gin.Context) {
 	}
 	users, err := h.classes.GetClassStudents(id)
 	if err != nil {
-		fail(c, 500, "get class students failed")
+		switch {
+		case service.IsServiceError(err, service.ErrClassNotFound):
+			fail(c, 404, "class not found")
+		default:
+			fail(c, 500, "get class students failed")
+		}
 		return
 	}
 	ok(c, users)
@@ -111,40 +129,22 @@ func (h *apiHandler) createClassStudent(c *gin.Context) {
 		fail(c, 400, "invalid request")
 		return
 	}
-	student, err := h.classes.CreateClassStudent(classID, model.ClassStudent{
-		StudentID: req.StudentID,
-		RealName:  req.RealName,
+	student, err := h.classes.CreateClassStudent(classID, model.Student{
+		StudentNo:   req.StudentID,
+		StudentName: req.RealName,
 	})
 	if err != nil {
-		fail(c, 400, "create class student failed")
+		switch {
+		case service.IsServiceError(err, service.ErrClassNotFound):
+			fail(c, 404, "class not found")
+		case service.IsServiceError(err, service.ErrInvalidInput):
+			fail(c, 400, "invalid request")
+		default:
+			fail(c, 400, "create class student failed")
+		}
 		return
 	}
 	ok(c, student)
-}
-
-func (h *apiHandler) importClassStudents(c *gin.Context) {
-	classID, err := parseUintParam(c, "id")
-	if err != nil {
-		fail(c, 400, err.Error())
-		return
-	}
-	var req dto.ImportClassStudentsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, 400, "invalid request")
-		return
-	}
-	students := make([]model.ClassStudent, 0, len(req))
-	for _, item := range req {
-		students = append(students, model.ClassStudent{
-			StudentID: item.StudentID,
-			RealName:  item.RealName,
-		})
-	}
-	if err := h.classes.ImportClassStudents(classID, students); err != nil {
-		fail(c, 400, "import class students failed")
-		return
-	}
-	ok(c, gin.H{})
 }
 
 func (h *apiHandler) updateClassStudent(c *gin.Context) {
@@ -163,12 +163,19 @@ func (h *apiHandler) updateClassStudent(c *gin.Context) {
 		fail(c, 400, "invalid request")
 		return
 	}
-	student, err := h.classes.UpdateClassStudent(classID, studentID, model.ClassStudent{
-		StudentID: req.StudentID,
-		RealName:  req.RealName,
+	student, err := h.classes.UpdateClassStudent(classID, studentID, model.Student{
+		StudentNo:   req.StudentID,
+		StudentName: req.RealName,
 	})
 	if err != nil {
-		fail(c, 400, "update class student failed")
+		switch {
+		case service.IsServiceError(err, service.ErrClassNotFound):
+			fail(c, 404, "class or class student not found")
+		case service.IsServiceError(err, service.ErrInvalidInput):
+			fail(c, 400, "invalid request")
+		default:
+			fail(c, 400, "update class student failed")
+		}
 		return
 	}
 	ok(c, student)
@@ -186,7 +193,12 @@ func (h *apiHandler) deleteClassStudent(c *gin.Context) {
 		return
 	}
 	if err := h.classes.DeleteClassStudent(classID, studentID); err != nil {
-		fail(c, 400, "delete class student failed")
+		switch {
+		case service.IsServiceError(err, service.ErrClassNotFound):
+			fail(c, 404, "class student not found")
+		default:
+			fail(c, 400, "delete class student failed")
+		}
 		return
 	}
 	ok(c, gin.H{})

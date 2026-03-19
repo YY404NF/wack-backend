@@ -15,6 +15,7 @@ func mountAuthRoutes(api *gin.RouterGroup, cfgMiddle gin.HandlerFunc, authHandle
 	protectedAuth := api.Group("")
 	protectedAuth.Use(cfgMiddle)
 	protectedAuth.GET("/auth/me", authHandler.me)
+	protectedAuth.POST("/auth/logout", authHandler.logout)
 	protectedAuth.POST("/auth/change-password", authHandler.changePassword)
 	protectedAuth.PUT("/auth/profile", authHandler.updateProfile)
 }
@@ -25,6 +26,13 @@ func mountFreeTimeRoutes(protected *gin.RouterGroup, apiHandler *apiHandler) {
 	protected.PUT("/free-times/:id", apiHandler.updateFreeTime)
 	protected.DELETE("/free-times/:id", apiHandler.deleteFreeTime)
 	protected.GET("/system-settings", apiHandler.getSystemSetting)
+}
+
+func mountMetaRoutes(protected *gin.RouterGroup, apiHandler *apiHandler) {
+	protected.GET("/meta/context", apiHandler.metaContext)
+	protected.GET("/meta/terms", apiHandler.metaTerms)
+	protected.GET("/meta/terms/:term_id/weeks", apiHandler.metaTermWeeks)
+	protected.GET("/meta/sections", apiHandler.metaSections)
 }
 
 func mountUserRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
@@ -46,20 +54,37 @@ func mountClassRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 	admin.DELETE("/classes/:id", apiHandler.deleteClass)
 	admin.GET("/classes/:id/students", apiHandler.getClassStudents)
 	admin.POST("/classes/:id/students", apiHandler.createClassStudent)
-	admin.POST("/classes/:id/students/import", apiHandler.importClassStudents)
 	admin.PUT("/classes/:id/students/:student_id", apiHandler.updateClassStudent)
 	admin.DELETE("/classes/:id/students/:student_id", apiHandler.deleteClassStudent)
+}
+
+func mountStudentRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
+	admin.GET("/students", apiHandler.listStudents)
+	admin.POST("/students", apiHandler.createStudent)
+	admin.PUT("/students/:id", apiHandler.updateStudent)
+	admin.DELETE("/students/:id", apiHandler.deleteStudent)
 }
 
 func mountCourseRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 	admin.GET("/courses", apiHandler.listCourses)
 	admin.POST("/courses", apiHandler.createCourse)
-	admin.GET("/courses/:id", apiHandler.getCourse)
+	admin.GET("/courses/:id/groups", apiHandler.listCourseGroups)
+	admin.POST("/courses/:id/groups", apiHandler.createCourseGroup)
+	admin.GET("/courses/:id/groups/:group_id", apiHandler.getCourseGroup)
+	admin.DELETE("/courses/:id/groups/:group_id", apiHandler.deleteCourseGroup)
+	admin.GET("/courses/:id/groups/:group_id/sessions", apiHandler.listCourseGroupSessions)
+	admin.POST("/courses/:id/groups/:group_id/sessions", apiHandler.createCourseGroupSession)
+	admin.PUT("/courses/:id/groups/:group_id/sessions/:session_id", apiHandler.updateCourseGroupSession)
+	admin.DELETE("/courses/:id/groups/:group_id/sessions/:session_id", apiHandler.deleteCourseGroupSession)
+	admin.GET("/courses/:id/groups/:group_id/students", apiHandler.listCourseGroupStudents)
+	admin.GET("/courses/:id/groups/:group_id/available-classes", apiHandler.listAvailableCourseGroupClasses)
+	admin.POST("/courses/:id/groups/:group_id/classes", apiHandler.addCourseGroupClasses)
+	admin.DELETE("/courses/:id/groups/:group_id/classes/:class_id", apiHandler.removeCourseGroupClass)
+	admin.GET("/courses/:id/groups/:group_id/available-students", apiHandler.listAvailableCourseGroupStudents)
+	admin.POST("/courses/:id/groups/:group_id/students", apiHandler.addCourseGroupStudents)
+	admin.DELETE("/courses/:id/groups/:group_id/students/:student_id", apiHandler.removeCourseGroupStudent)
 	admin.PUT("/courses/:id", apiHandler.updateCourse)
 	admin.DELETE("/courses/:id", apiHandler.deleteCourse)
-	admin.PUT("/courses/:id/students", apiHandler.replaceCourseStudents)
-	admin.PUT("/courses/:id/classes", apiHandler.replaceCourseClasses)
-	admin.PUT("/courses/:id/sessions", apiHandler.replaceCourseSessions)
 	admin.GET("/course-calendar", apiHandler.adminCourseCalendar)
 }
 
@@ -72,15 +97,16 @@ func mountAttendanceRoutes(admin, student *gin.RouterGroup, apiHandler *apiHandl
 	admin.GET("/attendance-dashboard", apiHandler.adminAttendanceDashboard)
 	admin.GET("/attendance-results", apiHandler.adminAttendanceResults)
 	admin.GET("/free-time-calendar", apiHandler.adminFreeTimeCalendar)
-	admin.GET("/attendance-checks/:id", apiHandler.adminGetAttendanceCheck)
-	admin.PATCH("/attendance-details/:id/status", apiHandler.adminUpdateAttendanceStatus)
-	admin.GET("/attendance-details/:id/logs", apiHandler.adminAttendanceDetailLogs)
-	admin.GET("/operation-logs", apiHandler.listAdminOperationLogs)
-	admin.GET("/attendance-detail-logs", apiHandler.listAttendanceDetailLogs)
+	admin.GET("/attendance-sessions/:id", apiHandler.adminGetAttendanceSession)
+	admin.PATCH("/attendance-records/:id/status", apiHandler.adminUpdateAttendanceStatus)
+	admin.GET("/attendance-records/:id/logs", apiHandler.adminAttendanceRecordLogs)
+	admin.GET("/attendance-record-logs", apiHandler.listAttendanceRecordLogs)
 
 	student.GET("/courses/available", apiHandler.studentAvailableCourses)
-	student.POST("/attendance-checks", apiHandler.studentEnterAttendanceCheck)
-	student.GET("/attendance-checks/:id", apiHandler.studentGetAttendanceCheck)
-	student.PATCH("/attendance-details/:id/status", apiHandler.studentUpdateAttendanceStatus)
-	student.POST("/attendance-checks/:id/complete", apiHandler.studentCompleteAttendanceCheck)
+	student.POST("/attendance-sessions", apiHandler.studentEnterAttendanceSession)
+	student.GET("/attendance-sessions/:id", apiHandler.studentGetAttendanceSession)
+	student.PATCH("/attendance-records/:id/status", apiHandler.studentUpdateAttendanceStatus)
+	student.POST("/attendance-sessions/:id/submit", apiHandler.studentSubmitAttendanceStatuses)
+	student.POST("/attendance-sessions/:id/complete", apiHandler.studentCompleteAttendanceSession)
+	student.DELETE("/attendance-sessions/:id", apiHandler.studentAbandonAttendanceSession)
 }

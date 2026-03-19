@@ -36,7 +36,7 @@ func (h *authHandler) initializeSystem(c *gin.Context) {
 		return
 	}
 
-	if err := h.auth.InitializeSystem(req.StudentID, req.RealName, req.Password); err != nil {
+	if err := h.auth.InitializeSystem(req.LoginID, req.RealName, req.Password); err != nil {
 		if service.IsServiceError(err, service.ErrSystemAlreadyInitialized) {
 			fail(c, 409, "system already initialized")
 			return

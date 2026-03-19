@@ -1,8 +1,8 @@
 package dto
 
 type LoginRequest struct {
-	StudentID string `json:"student_id" binding:"required"`
-	Password  string `json:"password" binding:"required"`
+	LoginID  string `json:"login_id" binding:"required"`
+	Password string `json:"password" binding:"required"`
 }
 
 type ChangePasswordRequest struct {
@@ -11,12 +11,12 @@ type ChangePasswordRequest struct {
 }
 
 type UpdateProfileRequest struct {
-	StudentID string `json:"student_id" binding:"required"`
-	RealName  string `json:"real_name" binding:"required"`
+	LoginID  string `json:"login_id" binding:"required"`
+	RealName string `json:"real_name" binding:"required"`
 }
 
 type InitializeSystemRequest struct {
-	StudentID string `json:"student_id" binding:"required"`
-	RealName  string `json:"real_name" binding:"required"`
-	Password  string `json:"password" binding:"required,min=6"`
+	LoginID  string `json:"login_id" binding:"required"`
+	RealName string `json:"real_name" binding:"required"`
+	Password string `json:"password" binding:"required,min=6"`
 }

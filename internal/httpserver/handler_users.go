@@ -33,14 +33,20 @@ func (h *apiHandler) createUser(c *gin.Context) {
 	}
 
 	user, err := h.users.CreateUser(service.CreateUserInput{
-		StudentID: req.StudentID,
-		RealName:  req.RealName,
-		Password:  req.Password,
-		Role:      req.Role,
-		Status:    req.Status,
+		LoginID:        req.LoginID,
+		RealName:       req.RealName,
+		Password:       req.Password,
+		Role:           req.Role,
+		Status:         req.Status,
+		ManagedClassID: req.ManagedClassID,
 	})
 	if err != nil {
-		fail(c, 400, "create user failed")
+		switch {
+		case service.IsServiceError(err, service.ErrInvalidInput):
+			fail(c, 400, "invalid request")
+		default:
+			fail(c, 400, "create user failed")
+		}
 		return
 	}
 	ok(c, user)
@@ -64,15 +70,18 @@ func (h *apiHandler) updateUser(c *gin.Context) {
 
 	current, _ := currentUser(c)
 	user, err := h.users.UpdateUser(current.ID, c.Param("student_id"), service.UpdateUserInput{
-		StudentID: req.StudentID,
-		RealName:  req.RealName,
-		Role:      req.Role,
-		Status:    req.Status,
+		LoginID:        req.LoginID,
+		RealName:       req.RealName,
+		Role:           req.Role,
+		Status:         req.Status,
+		ManagedClassID: req.ManagedClassID,
 	})
 	if err != nil {
 		switch {
 		case service.IsServiceError(err, service.ErrUserNotFound):
 			fail(c, 404, "user not found")
+		case service.IsServiceError(err, service.ErrInvalidInput):
+			fail(c, 400, "invalid request")
 		case service.IsServiceError(err, service.ErrAdminRemoveOwnRole):
 			fail(c, 400, "admin cannot remove own admin role")
 		case service.IsServiceError(err, service.ErrAdminFreezeSelf):
@@ -81,6 +90,12 @@ func (h *apiHandler) updateUser(c *gin.Context) {
 			fail(c, 400, "update user failed")
 		}
 		return
+	}
+	if user.Status == model.UserStatusFrozen {
+		if err := h.sessions.DeleteAllUserSessions(c.Request.Context(), user.ID); err != nil {
+			fail(c, 500, "clear sessions failed")
+			return
+		}
 	}
 
 	ok(c, user)
@@ -106,6 +121,15 @@ func (h *apiHandler) resetUserPassword(c *gin.Context) {
 		}
 		return
 	}
+	targetUser, err := h.users.GetUser(c.Param("student_id"))
+	if err != nil {
+		fail(c, 404, "user not found")
+		return
+	}
+	if err := h.sessions.DeleteAllUserSessions(c.Request.Context(), targetUser.ID); err != nil {
+		fail(c, 500, "clear sessions failed")
+		return
+	}
 	ok(c, gin.H{})
 }
 
@@ -128,6 +152,17 @@ func (h *apiHandler) updateUserStatus(c *gin.Context) {
 			fail(c, 400, "update status failed")
 		}
 		return
+	}
+	if req.Status == model.UserStatusFrozen {
+		targetUser, err := h.users.GetUser(c.Param("student_id"))
+		if err != nil {
+			fail(c, 404, "user not found")
+			return
+		}
+		if err := h.sessions.DeleteAllUserSessions(c.Request.Context(), targetUser.ID); err != nil {
+			fail(c, 500, "clear sessions failed")
+			return
+		}
 	}
 	ok(c, gin.H{})
 }

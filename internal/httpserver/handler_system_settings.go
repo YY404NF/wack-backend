@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"wack-backend/internal/httpserver/dto"
+	"wack-backend/internal/service"
 )
 
 func (h *apiHandler) getSystemSetting(c *gin.Context) {
@@ -24,7 +25,12 @@ func (h *apiHandler) updateSystemSetting(c *gin.Context) {
 
 	setting, err := h.systemSettings.UpdateSystemSetting(req.CurrentTermStartDate)
 	if err != nil {
-		fail(c, 400, "update system setting failed")
+		switch {
+		case service.IsServiceError(err, service.ErrInvalidInput):
+			fail(c, 400, "invalid request")
+		default:
+			fail(c, 400, "update system setting failed")
+		}
 		return
 	}
 	ok(c, setting)

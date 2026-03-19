@@ -9,6 +9,9 @@ APP_PORT="${5:?app port is required}"
 DB_PATH="${6:?db path is required}"
 JWT_SECRET="${7:?jwt secret is required}"
 CORS_ALLOW_ORIGIN="${8:-}"
+REDIS_ADDR="${9:-127.0.0.1:6379}"
+REDIS_PASSWORD="${10:-}"
+REDIS_DB="${11:-0}"
 
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 ENV_DIR="/etc/wack"
@@ -47,6 +50,9 @@ WACK_PORT=${APP_PORT}
 WACK_DB_PATH=${DB_PATH}
 WACK_JWT_SECRET=${JWT_SECRET}
 WACK_CORS_ALLOW_ORIGIN=${CORS_ALLOW_ORIGIN}
+WACK_REDIS_ADDR=${REDIS_ADDR}
+WACK_REDIS_PASSWORD=${REDIS_PASSWORD}
+WACK_REDIS_DB=${REDIS_DB}
 EOF
 
 run_root ln -sfn "${NEW_RELEASE_DIR}" "${CURRENT_LINK}"

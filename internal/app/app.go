@@ -9,12 +9,18 @@ import (
 	"wack-backend/internal/config"
 	"wack-backend/internal/database"
 	"wack-backend/internal/httpserver"
+	"wack-backend/internal/service"
 )
 
 type App struct {
 	cfg    config.Config
 	db     *gorm.DB
 	router *gin.Engine
+	sess   closer
+}
+
+type closer interface {
+	Close() error
 }
 
 func New() (*App, error) {
@@ -25,7 +31,12 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	router, err := httpserver.NewRouter(cfg, db)
+	sessionService, err := service.NewSessionService(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("new session service: %w", err)
+	}
+
+	router, err := httpserver.NewRouter(cfg, db, sessionService)
 	if err != nil {
 		return nil, fmt.Errorf("new router: %w", err)
 	}
@@ -34,6 +45,7 @@ func New() (*App, error) {
 		cfg:    cfg,
 		db:     db,
 		router: router,
+		sess:   sessionService,
 	}, nil
 }
 

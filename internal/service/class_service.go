@@ -1,6 +1,8 @@
 package service
 
 import (
+	"strings"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -18,38 +20,44 @@ func NewClassService(db *gorm.DB) *ClassService {
 }
 
 func (s *ClassService) ListClasses(page, pageSize int) ([]model.Class, int64, error) {
-	query := s.db.Table("class")
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	var classes []model.Class
-	if err := s.db.Table("class AS class_item").
-		Select("class_item.id, class_item.class_name, class_item.grade, class_item.major_name, class_item.created_at, class_item.updated_at, COUNT(class_student.id) AS student_count").
-		Joins("LEFT JOIN class_student ON class_student.class_id = class_item.id").
-		Group("class_item.id, class_item.class_name, class_item.grade, class_item.major_name, class_item.created_at, class_item.updated_at").
-		Order("class_item.grade DESC, class_item.major_name ASC, class_item.class_name ASC").
-		Offset((page - 1) * pageSize).
-		Limit(pageSize).
-		Scan(&classes).Error; err != nil {
-		return nil, 0, err
-	}
-	return classes, total, nil
+	return s.classes.ListClasses(page, pageSize)
 }
 
 func (s *ClassService) CreateClass(class model.Class) (model.Class, error) {
+	class.ClassName = strings.TrimSpace(class.ClassName)
+	class.MajorName = strings.TrimSpace(class.MajorName)
+	if class.ClassName == "" || class.MajorName == "" || class.Grade <= 0 {
+		return model.Class{}, ErrInvalidInput
+	}
+	if len(class.ClassName) > 100 || len(class.MajorName) > 100 {
+		return model.Class{}, ErrInvalidInput
+	}
 	return class, s.db.Create(&class).Error
 }
 
 func (s *ClassService) GetClass(id uint64) (model.Class, error) {
-	var class model.Class
-	if err := s.db.First(&class, id).Error; err != nil {
-		return model.Class{}, ErrClassNotFound
+	items, _, err := s.classes.ListClasses(1, 1000000)
+	if err != nil {
+		return model.Class{}, err
 	}
-	return class, nil
+	for _, class := range items {
+		if class.ID == id {
+			return class, nil
+		}
+	}
+	return model.Class{}, ErrClassNotFound
 }
 
 func (s *ClassService) UpdateClass(id uint64, req model.Class) (model.Class, error) {
+	req.ClassName = strings.TrimSpace(req.ClassName)
+	req.MajorName = strings.TrimSpace(req.MajorName)
+	if req.ClassName == "" || req.MajorName == "" || req.Grade <= 0 {
+		return model.Class{}, ErrInvalidInput
+	}
+	if len(req.ClassName) > 100 || len(req.MajorName) > 100 {
+		return model.Class{}, ErrInvalidInput
+	}
+
 	var class model.Class
 	if err := s.db.First(&class, id).Error; err != nil {
 		return model.Class{}, ErrClassNotFound
@@ -61,89 +69,116 @@ func (s *ClassService) UpdateClass(id uint64, req model.Class) (model.Class, err
 	}).Error; err != nil {
 		return model.Class{}, err
 	}
-	if err := s.db.First(&class, id).Error; err != nil {
-		return model.Class{}, err
-	}
-	return class, nil
+	return s.GetClass(id)
 }
 
 func (s *ClassService) DeleteClass(id uint64) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("class_id = ?", id).Delete(&model.ClassStudent{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("class_id = ?", id).Delete(&model.CourseClass{}).Error; err != nil {
+		if err := tx.Where("class_id = ?", id).Delete(&model.Student{}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&model.Class{}, id).Error
 	})
 }
 
-func (s *ClassService) GetClassStudents(id uint64) ([]model.ClassStudent, error) {
-	var students []model.ClassStudent
-	err := s.db.Where("class_id = ?", id).
-		Order("student_id ASC").
-		Find(&students).Error
-	return students, err
+func (s *ClassService) GetClassStudents(id uint64) ([]query.ClassStudentItem, error) {
+	if err := ensureClassExists(s.db, id); err != nil {
+		return nil, err
+	}
+	return s.classes.ClassStudents(id)
 }
 
 func (s *ClassService) ListStudentCandidates() ([]query.ClassStudentCandidateItem, error) {
 	return s.classes.StudentCandidates()
 }
 
-func (s *ClassService) CreateClassStudent(classID uint64, student model.ClassStudent) (model.ClassStudent, error) {
-	student.ClassID = classID
-	err := s.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "class_id"}, {Name: "student_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"real_name", "updated_at"}),
-	}).Create(&student).Error
+func (s *ClassService) CreateClassStudent(classID uint64, student model.Student) (query.ClassStudentItem, error) {
+	student.ClassID = &classID
+	student.Status = 1
+	student.StudentNo = strings.TrimSpace(student.StudentNo)
+	student.StudentName = strings.TrimSpace(student.StudentName)
+	if err := validateStudent(student); err != nil {
+		return query.ClassStudentItem{}, err
+	}
+	if err := ensureClassExists(s.db, classID); err != nil {
+		return query.ClassStudentItem{}, err
+	}
+	if err := s.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "student_no"}},
+		DoUpdates: clause.AssignmentColumns([]string{"student_name", "class_id", "status", "updated_at"}),
+	}).Create(&student).Error; err != nil {
+		return query.ClassStudentItem{}, err
+	}
+	students, err := s.classes.ClassStudents(classID)
 	if err != nil {
-		return model.ClassStudent{}, err
+		return query.ClassStudentItem{}, err
 	}
-	var created model.ClassStudent
-	if err := s.db.First(&created, "class_id = ? AND student_id = ?", classID, student.StudentID).Error; err != nil {
-		return model.ClassStudent{}, err
+	for _, item := range students {
+		if item.StudentID == student.StudentNo {
+			return item, nil
+		}
 	}
-	return created, nil
+	return query.ClassStudentItem{}, ErrClassNotFound
 }
 
-func (s *ClassService) ImportClassStudents(classID uint64, students []model.ClassStudent) error {
-	if len(students) == 0 {
-		return nil
+func (s *ClassService) UpdateClassStudent(classID, studentID uint64, input model.Student) (query.ClassStudentItem, error) {
+	input.StudentNo = strings.TrimSpace(input.StudentNo)
+	input.StudentName = strings.TrimSpace(input.StudentName)
+	input.ClassID = &classID
+	input.Status = 1
+	if err := validateStudent(input); err != nil {
+		return query.ClassStudentItem{}, err
 	}
-	for i := range students {
-		students[i].ClassID = classID
-	}
-	return s.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "class_id"}, {Name: "student_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"real_name", "updated_at"}),
-	}).Create(&students).Error
-}
-
-func (s *ClassService) UpdateClassStudent(classID, studentID uint64, input model.ClassStudent) (model.ClassStudent, error) {
-	var student model.ClassStudent
+	var student model.Student
 	if err := s.db.First(&student, "id = ? AND class_id = ?", studentID, classID).Error; err != nil {
-		return model.ClassStudent{}, ErrClassNotFound
+		return query.ClassStudentItem{}, ErrClassNotFound
 	}
 	if err := s.db.Model(&student).Updates(map[string]interface{}{
-		"student_id": input.StudentID,
-		"real_name":  input.RealName,
+		"student_no":   input.StudentNo,
+		"student_name": input.StudentName,
 	}).Error; err != nil {
-		return model.ClassStudent{}, err
+		return query.ClassStudentItem{}, err
 	}
-	if err := s.db.First(&student, student.ID).Error; err != nil {
-		return model.ClassStudent{}, err
+	students, err := s.classes.ClassStudents(classID)
+	if err != nil {
+		return query.ClassStudentItem{}, err
 	}
-	return student, nil
+	for _, item := range students {
+		if item.ID == student.ID {
+			return item, nil
+		}
+	}
+	return query.ClassStudentItem{}, ErrClassNotFound
 }
 
 func (s *ClassService) DeleteClassStudent(classID, studentID uint64) error {
-	result := s.db.Where("id = ? AND class_id = ?", studentID, classID).Delete(&model.ClassStudent{})
+	result := s.db.Where("id = ? AND class_id = ?", studentID, classID).Delete(&model.Student{})
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
 		return ErrClassNotFound
+	}
+	return nil
+}
+
+func ensureClassExists(db *gorm.DB, classID uint64) error {
+	var count int64
+	if err := db.Model(&model.Class{}).Where("id = ?", classID).Count(&count).Error; err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrClassNotFound
+	}
+	return nil
+}
+
+func validateStudent(student model.Student) error {
+	if student.StudentNo == "" || student.StudentName == "" {
+		return ErrInvalidInput
+	}
+	if len(student.StudentNo) > 32 || len(student.StudentName) > 50 {
+		return ErrInvalidInput
 	}
 	return nil
 }
