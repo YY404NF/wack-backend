@@ -42,6 +42,8 @@ func (h *apiHandler) createStudent(c *gin.Context) {
 		switch {
 		case service.IsServiceError(err, service.ErrClassNotFound):
 			fail(c, 404, "class not found")
+		case service.IsServiceError(err, service.ErrStudentNoAlreadyExists):
+			fail(c, 409, "student no already exists")
 		case service.IsServiceError(err, service.ErrInvalidInput):
 			fail(c, 400, "invalid request")
 		default:

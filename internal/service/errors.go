@@ -13,6 +13,7 @@ var (
 	ErrCourseGroupNotFound        = errors.New("course group not found")
 	ErrCourseGroupLessonNotFound  = errors.New("course group lesson not found")
 	ErrStudentNotFound            = errors.New("student not found")
+	ErrStudentNoAlreadyExists     = errors.New("student no already exists")
 	ErrTermNotFound               = errors.New("term not found")
 	ErrTermStartDateMustBeMonday  = errors.New("term start date must be monday")
 	ErrFreeTimeNotFound           = errors.New("free time not found")

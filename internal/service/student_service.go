@@ -1,11 +1,10 @@
 package service
 
 import (
+	"errors"
 	"strings"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-
 	"wack-backend/internal/model"
 	"wack-backend/internal/query"
 )
@@ -56,10 +55,10 @@ func (s *StudentService) CreateStudent(student model.Student) (query.StudentItem
 			return query.StudentItem{}, err
 		}
 	}
-	if err := s.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "student_no"}},
-		DoUpdates: clause.AssignmentColumns([]string{"student_name", "class_id", "status", "updated_at"}),
-	}).Create(&student).Error; err != nil {
+	if err := s.db.Create(&student).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(strings.ToLower(err.Error()), "unique") {
+			return query.StudentItem{}, ErrStudentNoAlreadyExists
+		}
 		return query.StudentItem{}, err
 	}
 	return s.students.GetStudent(student.ID)

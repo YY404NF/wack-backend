@@ -72,7 +72,28 @@ func (s *ClassService) UpdateClass(id uint64, req model.Class) (model.Class, err
 
 func (s *ClassService) DeleteClass(id uint64) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("class_id = ?", id).Delete(&model.Student{}).Error; err != nil {
+		if err := tx.Model(&model.Student{}).
+			Where("class_id = ?", id).
+			Updates(map[string]interface{}{
+				"class_id":   nil,
+				"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+			}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.CourseGroupStudent{}).
+			Where("class_id = ?", id).
+			Updates(map[string]interface{}{
+				"class_id":   nil,
+				"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+			}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.User{}).
+			Where("managed_class_id = ?", id).
+			Updates(map[string]interface{}{
+				"managed_class_id": nil,
+				"updated_at":       gorm.Expr("CURRENT_TIMESTAMP"),
+			}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&model.Class{}, id).Error
