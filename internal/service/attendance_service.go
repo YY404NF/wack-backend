@@ -38,6 +38,10 @@ func (s *AttendanceService) AttendanceResults(weekNo, courseID, status string, p
 	return s.attendance.AttendanceResults(weekNo, courseID, status, page, pageSize)
 }
 
+func (s *AttendanceService) AttendanceSessionSummaries(keyword, weekNo, status string, page, pageSize int) ([]query.AttendanceSessionSummaryItem, int64, error) {
+	return s.attendance.AttendanceSessionSummaries(keyword, weekNo, status, page, pageSize)
+}
+
 func (s *AttendanceService) AvailableCourseGroupLessons(weekday, weekNo int) ([]query.SessionWithCourse, error) {
 	return s.attendance.AvailableCourseGroupLessons(weekday, weekNo)
 }
@@ -211,6 +215,30 @@ func (s *AttendanceService) SubmitAttendanceStatusesForClass(checkID uint64, ope
 
 func (s *AttendanceService) GetAttendanceSession(sessionID uint64) (model.CourseGroupLesson, model.Course, []query.AttendanceRecordItem, error) {
 	return s.GetAttendanceSessionForClass(sessionID, nil)
+}
+
+func (s *AttendanceService) GetAttendanceSessionPage(sessionID uint64, keyword, status string, page, pageSize int) (model.CourseGroupLesson, model.Course, []query.AttendanceRecordItem, int64, error) {
+	var lesson model.CourseGroupLesson
+	if err := s.db.First(&lesson, sessionID).Error; err != nil {
+		return model.CourseGroupLesson{}, model.Course{}, nil, 0, ErrCourseGroupLessonNotFound
+	}
+
+	var group model.CourseGroup
+	if err := s.db.First(&group, lesson.CourseGroupID).Error; err != nil {
+		return model.CourseGroupLesson{}, model.Course{}, nil, 0, ErrCourseGroupNotFound
+	}
+
+	var course model.Course
+	if err := s.db.First(&course, group.CourseID).Error; err != nil {
+		return model.CourseGroupLesson{}, model.Course{}, nil, 0, ErrCourseNotFound
+	}
+
+	records, total, err := s.attendance.AttendanceSessionRecordPage(lesson.ID, keyword, status, page, pageSize)
+	if err != nil {
+		return model.CourseGroupLesson{}, model.Course{}, nil, 0, err
+	}
+
+	return lesson, course, records, total, nil
 }
 
 func (s *AttendanceService) GetAttendanceSessionForClass(sessionID uint64, classID *uint64) (model.CourseGroupLesson, model.Course, []query.AttendanceRecordItem, error) {

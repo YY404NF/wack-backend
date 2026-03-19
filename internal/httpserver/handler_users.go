@@ -11,11 +11,14 @@ import (
 func (h *apiHandler) listUsers(c *gin.Context) {
 	page, pageSize := parsePage(c)
 	users, total, err := h.users.ListUsers(service.ListUsersInput{
-		Page:     page,
-		PageSize: pageSize,
-		Role:     c.Query("role"),
-		Status:   c.Query("status"),
-		Keyword:  c.Query("keyword"),
+		Page:             page,
+		PageSize:         pageSize,
+		Role:             c.Query("role"),
+		Status:           c.Query("status"),
+		Keyword:          c.Query("keyword"),
+		LoginID:          c.Query("login_id"),
+		RealName:         c.Query("real_name"),
+		ManagedClassName: c.Query("managed_class_name"),
 	})
 	if err != nil {
 		fail(c, 500, "list users failed")

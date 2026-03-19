@@ -29,6 +29,20 @@ type AttendanceResultItem struct {
 	Status              int    `json:"status"`
 }
 
+type AttendanceSessionSummaryItem struct {
+	CourseGroupLessonID uint64 `json:"course_group_lesson_id"`
+	CourseID            uint64 `json:"course_id"`
+	CourseName          string `json:"course_name"`
+	TeacherName         string `json:"teacher_name"`
+	WeekNo              int    `json:"week_no"`
+	SessionNo           int    `json:"session_no"`
+	StudentCount        int64  `json:"student_count"`
+	PresentCount        int64  `json:"present_count"`
+	LateCount           int64  `json:"late_count"`
+	AbsentCount         int64  `json:"absent_count"`
+	LeaveCount          int64  `json:"leave_count"`
+}
+
 type AttendanceRecordItem struct {
 	ID                  uint64     `json:"id"`
 	AttendanceRecordID  *uint64    `json:"attendance_record_id"`
@@ -175,6 +189,54 @@ func (q *AttendanceQuery) AttendanceResults(weekNo, courseID, status string, pag
 	return items, total, nil
 }
 
+func (q *AttendanceQuery) AttendanceSessionSummaries(keyword, weekNo, status string, page, pageSize int) ([]AttendanceSessionSummaryItem, int64, error) {
+	base := q.db.Table("attendance_record").
+		Select(`
+			course_group_lesson.id AS course_group_lesson_id,
+			course.id AS course_id,
+			course.course_name,
+			course.teacher_name,
+			course_group_lesson.week_no,
+			ROW_NUMBER() OVER (
+				PARTITION BY course.id
+				ORDER BY course_group_lesson.week_no, course_group_lesson.weekday, course_group_lesson.section, course_group_lesson.id
+			) AS session_no,
+			COUNT(attendance_record.id) AS student_count,
+			SUM(CASE WHEN attendance_record.attendance_status = 0 THEN 1 ELSE 0 END) AS present_count,
+			SUM(CASE WHEN attendance_record.attendance_status = 1 THEN 1 ELSE 0 END) AS late_count,
+			SUM(CASE WHEN attendance_record.attendance_status = 2 THEN 1 ELSE 0 END) AS absent_count,
+			SUM(CASE WHEN attendance_record.attendance_status = 3 THEN 1 ELSE 0 END) AS leave_count
+		`).
+		Joins("JOIN course_group_lesson ON course_group_lesson.id = attendance_record.course_group_lesson_id").
+		Joins("JOIN course_group ON course_group.id = course_group_lesson.course_group_id").
+		Joins("JOIN course ON course.id = course_group.course_id")
+	if weekNo != "" {
+		base = base.Where("course_group_lesson.week_no = ?", weekNo)
+	}
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		base = base.Where("course.course_name LIKE ? OR course.teacher_name LIKE ? OR CAST(course_group_lesson.id AS TEXT) LIKE ?", like, like, like)
+	}
+	base = base.Group("course_group_lesson.id, course.id, course.course_name, course.teacher_name, course_group_lesson.week_no, course_group_lesson.weekday, course_group_lesson.section")
+	if status != "" {
+		base = base.Having("SUM(CASE WHEN attendance_record.attendance_status = ? THEN 1 ELSE 0 END) > 0", status)
+	}
+
+	countQuery := q.db.Table("(?) AS attendance_sessions", base)
+	var total int64
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var items []AttendanceSessionSummaryItem
+	err := q.db.Table("(?) AS attendance_sessions", base).
+		Order("week_no DESC, session_no DESC, course_group_lesson_id DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Scan(&items).Error
+	return items, total, err
+}
+
 func (q *AttendanceQuery) AvailableCourseGroupLessons(weekday, weekNo int) ([]SessionWithCourse, error) {
 	var sessions []SessionWithCourse
 	err := q.db.Table("course_group_lesson").
@@ -229,8 +291,13 @@ func (q *AttendanceQuery) AvailableCourseGroupLessonsForClass(weekday, weekNo in
 }
 
 func (q *AttendanceQuery) AttendanceSessionRecords(sessionID uint64) ([]AttendanceRecordItem, error) {
+	items, _, err := q.AttendanceSessionRecordPage(sessionID, "", "", 1, 1000000)
+	return items, err
+}
+
+func (q *AttendanceQuery) AttendanceSessionRecordPage(sessionID uint64, keyword, status string, page, pageSize int) ([]AttendanceRecordItem, int64, error) {
 	var records []AttendanceRecordItem
-	err := q.db.Table("course_group_student").
+	base := q.db.Table("course_group_student").
 		Select(`
 			student.id AS id,
 			attendance_record.id AS attendance_record_id,
@@ -247,10 +314,28 @@ func (q *AttendanceQuery) AttendanceSessionRecords(sessionID uint64) ([]Attendan
 		Joins("JOIN student ON student.id = course_group_student.student_id").
 		Joins("LEFT JOIN attendance_record ON attendance_record.course_group_lesson_id = course_group_lesson.id AND attendance_record.student_id = course_group_student.student_id").
 		Joins("LEFT JOIN class ON class.id = course_group_student.class_id").
-		Where("course_group_student.status = 1 AND student.status = 1").
+		Where("course_group_student.status = 1 AND student.status = 1")
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		base = base.Where("student.student_no LIKE ? OR student.student_name LIKE ? OR COALESCE(class.class_name, '') LIKE ?", like, like, like)
+	}
+	switch status {
+	case "unrecorded":
+		base = base.Where("attendance_record.id IS NULL")
+	case "0", "1", "2", "3":
+		base = base.Where("attendance_record.attendance_status = ?", status)
+	}
+
+	var total int64
+	if err := q.db.Table("(?) AS attendance_records", base).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.
 		Order("COALESCE(class.class_name, '其他学生') ASC, student.student_no ASC, student.id ASC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
 		Scan(&records).Error
-	return records, err
+	return records, total, err
 }
 
 func (q *AttendanceQuery) AttendanceSessionRecordsForClass(sessionID uint64, classID uint64) ([]AttendanceRecordItem, error) {

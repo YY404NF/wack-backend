@@ -10,10 +10,13 @@ import (
 )
 
 type ListStudentsInput struct {
-	Page     int
-	PageSize int
-	ClassID  uint64
-	Keyword  string
+	Page      int
+	PageSize  int
+	ClassID   uint64
+	Keyword   string
+	StudentID string
+	RealName  string
+	ClassName string
 }
 
 type StudentService struct {
@@ -36,10 +39,13 @@ func (s *StudentService) ListStudents(input ListStudentsInput) ([]query.StudentI
 		input.PageSize = 20
 	}
 	return s.students.ListStudents(query.ListStudentsInput{
-		Page:     input.Page,
-		PageSize: input.PageSize,
-		ClassID:  input.ClassID,
-		Keyword:  input.Keyword,
+		Page:      input.Page,
+		PageSize:  input.PageSize,
+		ClassID:   input.ClassID,
+		Keyword:   input.Keyword,
+		StudentID: input.StudentID,
+		RealName:  input.RealName,
+		ClassName: input.ClassName,
 	})
 }
 
@@ -100,4 +106,8 @@ func (s *StudentService) DeleteStudent(id uint64) error {
 		return ErrStudentNotFound
 	}
 	return nil
+}
+
+func (s *StudentService) ListStudentOptions(keyword string, onlyUnbound bool) ([]query.StudentOptionItem, error) {
+	return s.students.StudentOptions(keyword, onlyUnbound)
 }

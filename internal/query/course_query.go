@@ -246,7 +246,7 @@ func (q *CourseQuery) AvailableCourseGroupStudents(groupID uint64, keyword strin
 	return items, err
 }
 
-func (q *CourseQuery) ListCourses(term, teacher, keyword string, page, pageSize int) ([]CourseListItem, int64, error) {
+func (q *CourseQuery) ListCourses(term, teacher, keyword string, classID uint64, page, pageSize int) ([]CourseListItem, int64, error) {
 	queryDB := q.db.Table("course").
 		Joins("JOIN term ON term.id = course.term_id").
 		Where("course.status = 1")
@@ -258,6 +258,19 @@ func (q *CourseQuery) ListCourses(term, teacher, keyword string, page, pageSize 
 	}
 	if keyword != "" {
 		queryDB = queryDB.Where("course.course_name LIKE ?", "%"+keyword+"%")
+	}
+	if classID > 0 {
+		queryDB = queryDB.Where(`
+			EXISTS (
+				SELECT 1
+				FROM course_group_student
+				JOIN course_group ON course_group.id = course_group_student.course_group_id
+				WHERE course_group.course_id = course.id
+				  AND course_group.status = 1
+				  AND course_group_student.status = 1
+				  AND course_group_student.class_id = ?
+			)
+		`, classID)
 	}
 	var total int64
 	if err := queryDB.Count(&total).Error; err != nil {

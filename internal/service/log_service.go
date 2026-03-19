@@ -18,8 +18,8 @@ func NewLogService(db *gorm.DB) *LogService {
 	}
 }
 
-func (s *LogService) AttendanceRecordLogs(page, pageSize int) ([]query.AttendanceRecordLogItem, int64, error) {
-	return s.logs.AttendanceRecordLogs(page, pageSize)
+func (s *LogService) AttendanceRecordLogs(input query.AttendanceRecordLogListInput) ([]query.AttendanceRecordLogItem, int64, error) {
+	return s.logs.AttendanceRecordLogs(input)
 }
 
 func (s *LogService) RecordLogs(recordID uint64) ([]query.AttendanceRecordLogItem, error) {

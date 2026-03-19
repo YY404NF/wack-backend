@@ -19,8 +19,8 @@ func NewClassService(db *gorm.DB) *ClassService {
 	return &ClassService{db: db, classes: query.NewClassQuery(db)}
 }
 
-func (s *ClassService) ListClasses(page, pageSize int) ([]model.Class, int64, error) {
-	return s.classes.ListClasses(page, pageSize)
+func (s *ClassService) ListClasses(grade, majorName, className string, page, pageSize int) ([]model.Class, int64, error) {
+	return s.classes.ListClasses(grade, strings.TrimSpace(majorName), strings.TrimSpace(className), page, pageSize)
 }
 
 func (s *ClassService) CreateClass(class model.Class) (model.Class, error) {
@@ -109,6 +109,10 @@ func (s *ClassService) GetClassStudents(id uint64) ([]query.ClassStudentItem, er
 
 func (s *ClassService) ListStudentCandidates() ([]query.ClassStudentCandidateItem, error) {
 	return s.classes.StudentCandidates()
+}
+
+func (s *ClassService) ListClassOptions(keyword string) ([]query.ClassOptionItem, error) {
+	return s.classes.ClassOptions(strings.TrimSpace(keyword))
 }
 
 func (s *ClassService) CreateClassStudent(classID uint64, student model.Student) (query.ClassStudentItem, error) {

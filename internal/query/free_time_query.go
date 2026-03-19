@@ -21,6 +21,14 @@ type FreeTimeItem struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type FreeTimeEditorItem struct {
+	ID        uint64 `json:"id"`
+	Term      string `json:"term"`
+	Weekday   int    `json:"weekday"`
+	Section   int    `json:"section"`
+	FreeWeeks string `json:"free_weeks"`
+}
+
 type FreeTimeQuery struct {
 	db *gorm.DB
 }
@@ -66,6 +74,27 @@ func (q *FreeTimeQuery) Calendar(term string) ([]FreeTimeItem, error) {
 	}
 	var items []FreeTimeItem
 	if err := query.Order("weekday, section, user.login_id").Scan(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (q *FreeTimeQuery) Editor(term, loginID string, userID uint64, restrictToUser bool) ([]FreeTimeEditorItem, error) {
+	query := q.db.Table("user_free_time").
+		Select("user_free_time.id, term.name AS term, user_free_time.weekday, user_free_time.section, user_free_time.free_weeks").
+		Joins("JOIN user ON user.id = user_free_time.user_id").
+		Joins("JOIN term ON term.id = user_free_time.term_id").
+		Where("user.role = ?", model.RoleStudent)
+	if term != "" {
+		query = query.Where("term.name = ?", term)
+	}
+	if loginID != "" {
+		query = query.Where("user.login_id = ?", loginID)
+	} else if restrictToUser {
+		query = query.Where("user_free_time.user_id = ?", userID)
+	}
+	var items []FreeTimeEditorItem
+	if err := query.Order("user_free_time.id DESC").Scan(&items).Error; err != nil {
 		return nil, err
 	}
 	return items, nil

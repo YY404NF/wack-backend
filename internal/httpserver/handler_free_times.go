@@ -12,6 +12,10 @@ import (
 func (h *apiHandler) listFreeTimes(c *gin.Context) {
 	page, pageSize := parsePage(c)
 	user, _ := currentUser(c)
+	if user.Role == model.RoleCommissioner {
+		fail(c, 403, "forbidden")
+		return
+	}
 	items, total, err := h.freeTimes.ListFreeTimes(c.Query("term"), c.Query("login_id"), user, page, pageSize)
 	if err != nil {
 		fail(c, 500, "list free times failed")
@@ -20,8 +24,26 @@ func (h *apiHandler) listFreeTimes(c *gin.Context) {
 	ok(c, pageResult[query.FreeTimeItem]{Items: items, Page: page, PageSize: pageSize, Total: total})
 }
 
+func (h *apiHandler) listFreeTimeEditor(c *gin.Context) {
+	user, _ := currentUser(c)
+	if user.Role == model.RoleCommissioner {
+		fail(c, 403, "forbidden")
+		return
+	}
+	items, err := h.freeTimes.ListFreeTimeEditor(c.Query("term"), c.Query("login_id"), user)
+	if err != nil {
+		fail(c, 500, "list free time editor failed")
+		return
+	}
+	ok(c, items)
+}
+
 func (h *apiHandler) createFreeTime(c *gin.Context) {
 	user, _ := currentUser(c)
+	if user.Role == model.RoleCommissioner {
+		fail(c, 403, "forbidden")
+		return
+	}
 	var req dto.FreeTimeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "invalid request")
@@ -61,6 +83,10 @@ func (h *apiHandler) updateFreeTime(c *gin.Context) {
 	}
 
 	user, _ := currentUser(c)
+	if user.Role == model.RoleCommissioner {
+		fail(c, 403, "forbidden")
+		return
+	}
 	item, err := h.freeTimes.GetFreeTime(id)
 	if err != nil {
 		fail(c, 404, "free time not found")
@@ -113,6 +139,10 @@ func (h *apiHandler) deleteFreeTime(c *gin.Context) {
 	}
 
 	user, _ := currentUser(c)
+	if user.Role == model.RoleCommissioner {
+		fail(c, 403, "forbidden")
+		return
+	}
 	item, err := h.freeTimes.GetFreeTime(id)
 	if err != nil {
 		fail(c, 404, "free time not found")

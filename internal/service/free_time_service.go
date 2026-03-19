@@ -22,6 +22,10 @@ func (s *FreeTimeService) ListFreeTimes(term, studentID string, currentUser mode
 	return s.freeTimes.List(term, studentID, currentUser.ID, currentUser.Role == model.RoleStudent, page, pageSize)
 }
 
+func (s *FreeTimeService) ListFreeTimeEditor(term, loginID string, currentUser model.User) ([]query.FreeTimeEditorItem, error) {
+	return s.freeTimes.Editor(strings.TrimSpace(term), strings.TrimSpace(loginID), currentUser.ID, currentUser.Role == model.RoleStudent)
+}
+
 func (s *FreeTimeService) FreeTimeCalendar(term string) ([]query.FreeTimeItem, error) {
 	return s.freeTimes.Calendar(term)
 }

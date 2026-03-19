@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -20,7 +21,8 @@ type courseRequest struct {
 
 func (h *apiHandler) listCourses(c *gin.Context) {
 	page, pageSize := parsePage(c)
-	items, total, err := h.courses.ListCourses(c.Query("term"), c.Query("teacher_name"), strings.TrimSpace(c.Query("keyword")), page, pageSize)
+	classID, _ := strconv.ParseUint(c.DefaultQuery("class_id", "0"), 10, 64)
+	items, total, err := h.courses.ListCourses(c.Query("term"), c.Query("teacher_name"), strings.TrimSpace(c.Query("keyword")), classID, page, pageSize)
 	if err != nil {
 		fail(c, 500, "list courses failed")
 		return

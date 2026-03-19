@@ -19,8 +19,8 @@ func NewCourseService(db *gorm.DB) *CourseService {
 	return &CourseService{db: db, courses: query.NewCourseQuery(db)}
 }
 
-func (s *CourseService) ListCourses(term, teacher, keyword string, page, pageSize int) ([]query.CourseListItem, int64, error) {
-	return s.courses.ListCourses(term, teacher, strings.TrimSpace(keyword), page, pageSize)
+func (s *CourseService) ListCourses(term, teacher, keyword string, classID uint64, page, pageSize int) ([]query.CourseListItem, int64, error) {
+	return s.courses.ListCourses(term, teacher, strings.TrimSpace(keyword), classID, page, pageSize)
 }
 
 func (s *CourseService) CreateCourse(course model.Course) (model.Course, error) {

@@ -16,12 +16,21 @@ import (
 
 func (h *apiHandler) listClasses(c *gin.Context) {
 	page, pageSize := parsePage(c)
-	classes, total, err := h.classes.ListClasses(page, pageSize)
+	classes, total, err := h.classes.ListClasses(c.Query("grade"), c.Query("major_name"), c.Query("class_name"), page, pageSize)
 	if err != nil {
 		fail(c, 500, "list classes failed")
 		return
 	}
 	ok(c, pageResult[model.Class]{Items: classes, Page: page, PageSize: pageSize, Total: total})
+}
+
+func (h *apiHandler) listClassOptions(c *gin.Context) {
+	items, err := h.classes.ListClassOptions(c.Query("keyword"))
+	if err != nil {
+		fail(c, 500, "list class options failed")
+		return
+	}
+	ok(c, items)
 }
 
 func (h *apiHandler) createClass(c *gin.Context) {

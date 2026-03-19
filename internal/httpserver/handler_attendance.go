@@ -31,6 +31,16 @@ func (h *apiHandler) adminAttendanceResults(c *gin.Context) {
 	ok(c, pageResult[query.AttendanceResultItem]{Items: items, Page: page, PageSize: pageSize, Total: total})
 }
 
+func (h *apiHandler) adminAttendanceSessions(c *gin.Context) {
+	page, pageSize := parsePage(c)
+	items, total, err := h.attendance.AttendanceSessionSummaries(c.Query("keyword"), c.Query("week_no"), c.Query("status"), page, pageSize)
+	if err != nil {
+		fail(c, 500, "load attendance sessions failed")
+		return
+	}
+	ok(c, pageResult[query.AttendanceSessionSummaryItem]{Items: items, Page: page, PageSize: pageSize, Total: total})
+}
+
 func (h *apiHandler) adminFreeTimeCalendar(c *gin.Context) {
 	items, err := h.freeTimes.FreeTimeCalendar(c.Query("term"))
 	if err != nil {
@@ -335,7 +345,8 @@ func (h *apiHandler) adminGetAttendanceSession(c *gin.Context) {
 		fail(c, 400, err.Error())
 		return
 	}
-	_, _, records, err := h.attendance.GetAttendanceSession(id)
+	page, pageSize := parsePage(c)
+	session, course, records, total, err := h.attendance.GetAttendanceSessionPage(id, c.Query("keyword"), c.Query("status"), page, pageSize)
 	if err != nil {
 		switch {
 		case service.IsServiceError(err, service.ErrCourseGroupLessonNotFound):
@@ -346,7 +357,12 @@ func (h *apiHandler) adminGetAttendanceSession(c *gin.Context) {
 		return
 	}
 	ok(c, gin.H{
-		"attendance_records": records,
+		"course_group_lesson": session,
+		"course":              course,
+		"attendance_records":  records,
+		"page":                page,
+		"page_size":           pageSize,
+		"total":               total,
 	})
 }
 

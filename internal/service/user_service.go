@@ -14,11 +14,14 @@ type UserService struct {
 }
 
 type ListUsersInput struct {
-	Page     int
-	PageSize int
-	Role     string
-	Status   string
-	Keyword  string
+	Page             int
+	PageSize         int
+	Role             string
+	Status           string
+	Keyword          string
+	LoginID          string
+	RealName         string
+	ManagedClassName string
 }
 
 type CreateUserInput struct {
@@ -43,15 +46,24 @@ func NewUserService(db *gorm.DB) *UserService {
 }
 
 func (s *UserService) ListUsers(input ListUsersInput) ([]model.User, int64, error) {
-	query := s.db.Model(&model.User{})
+	query := s.db.Model(&model.User{}).Joins("LEFT JOIN class ON class.id = user.managed_class_id")
 	if input.Role != "" {
 		query = query.Where("role = ?", input.Role)
 	}
 	if input.Status != "" {
 		query = query.Where("status = ?", input.Status)
 	}
+	if value := strings.TrimSpace(input.LoginID); value != "" {
+		query = query.Where("user.login_id LIKE ?", "%"+value+"%")
+	}
+	if value := strings.TrimSpace(input.RealName); value != "" {
+		query = query.Where("user.real_name LIKE ?", "%"+value+"%")
+	}
+	if value := strings.TrimSpace(input.ManagedClassName); value != "" {
+		query = query.Where("class.class_name LIKE ?", "%"+value+"%")
+	}
 	if keyword := strings.TrimSpace(input.Keyword); keyword != "" {
-		query = query.Where("login_id LIKE ? OR real_name LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+		query = query.Where("user.login_id LIKE ? OR user.real_name LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
 	}
 
 	var total int64
@@ -60,7 +72,7 @@ func (s *UserService) ListUsers(input ListUsersInput) ([]model.User, int64, erro
 	}
 
 	var users []model.User
-	if err := query.Order("created_at DESC").Offset((input.Page - 1) * input.PageSize).Limit(input.PageSize).Find(&users).Error; err != nil {
+	if err := query.Order("user.created_at DESC").Offset((input.Page - 1) * input.PageSize).Limit(input.PageSize).Find(&users).Error; err != nil {
 		return nil, 0, err
 	}
 	return users, total, nil

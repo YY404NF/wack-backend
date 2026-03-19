@@ -22,6 +22,7 @@ func mountAuthRoutes(api *gin.RouterGroup, cfgMiddle gin.HandlerFunc, authHandle
 
 func mountFreeTimeRoutes(protected *gin.RouterGroup, apiHandler *apiHandler) {
 	protected.GET("/free-times", apiHandler.listFreeTimes)
+	protected.GET("/free-time-editor", apiHandler.listFreeTimeEditor)
 	protected.POST("/free-times", apiHandler.createFreeTime)
 	protected.PUT("/free-times/:id", apiHandler.updateFreeTime)
 	protected.DELETE("/free-times/:id", apiHandler.deleteFreeTime)
@@ -47,6 +48,7 @@ func mountUserRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 
 func mountClassRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 	admin.GET("/classes", apiHandler.listClasses)
+	admin.GET("/class-options", apiHandler.listClassOptions)
 	admin.GET("/class-students", apiHandler.listClassStudentCandidates)
 	admin.POST("/classes", apiHandler.createClass)
 	admin.GET("/classes/:id", apiHandler.getClass)
@@ -60,6 +62,7 @@ func mountClassRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 }
 
 func mountStudentRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
+	admin.GET("/student-options", apiHandler.listStudentOptions)
 	admin.GET("/students", apiHandler.listStudents)
 	admin.POST("/students", apiHandler.createStudent)
 	admin.PUT("/students/:id", apiHandler.updateStudent)
@@ -100,6 +103,7 @@ func mountAttendanceRoutes(admin, student *gin.RouterGroup, apiHandler *apiHandl
 	admin.GET("/attendance-dashboard", apiHandler.adminAttendanceDashboard)
 	admin.GET("/attendance-results", apiHandler.adminAttendanceResults)
 	admin.GET("/free-time-calendar", apiHandler.adminFreeTimeCalendar)
+	admin.GET("/attendance-sessions", apiHandler.adminAttendanceSessions)
 	admin.GET("/attendance-sessions/:id", apiHandler.adminGetAttendanceSession)
 	admin.PATCH("/attendance-sessions/:id/students/:student_id/status", apiHandler.adminUpsertAttendanceStatus)
 	admin.PATCH("/attendance-records/:id/status", apiHandler.adminUpdateAttendanceStatus)

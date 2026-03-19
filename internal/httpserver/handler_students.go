@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -11,14 +12,27 @@ import (
 	"wack-backend/internal/service"
 )
 
+func (h *apiHandler) listStudentOptions(c *gin.Context) {
+	onlyUnbound := strings.EqualFold(c.DefaultQuery("binding", ""), "unbound")
+	items, err := h.students.ListStudentOptions(c.Query("keyword"), onlyUnbound)
+	if err != nil {
+		fail(c, 500, "list student options failed")
+		return
+	}
+	ok(c, items)
+}
+
 func (h *apiHandler) listStudents(c *gin.Context) {
 	page, pageSize := parsePage(c)
 	classID, _ := strconv.ParseUint(c.DefaultQuery("class_id", "0"), 10, 64)
 	items, total, err := h.students.ListStudents(service.ListStudentsInput{
-		Page:     page,
-		PageSize: pageSize,
-		ClassID:  classID,
-		Keyword:  c.Query("keyword"),
+		Page:      page,
+		PageSize:  pageSize,
+		ClassID:   classID,
+		Keyword:   c.Query("keyword"),
+		StudentID: c.Query("student_id"),
+		RealName:  c.Query("real_name"),
+		ClassName: c.Query("class_name"),
 	})
 	if err != nil {
 		fail(c, 500, "list students failed")
