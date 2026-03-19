@@ -5,6 +5,7 @@ import (
 
 	"wack-backend/internal/httpserver/dto"
 	"wack-backend/internal/model"
+	"wack-backend/internal/query"
 	"wack-backend/internal/service"
 )
 
@@ -107,6 +108,54 @@ func (h *apiHandler) getClassStudents(c *gin.Context) {
 		return
 	}
 	ok(c, users)
+}
+
+func (h *apiHandler) studentManagedClass(c *gin.Context) {
+	user, exists := currentUser(c)
+	if !exists {
+		fail(c, 401, "unauthorized")
+		return
+	}
+	if user.Role != model.RoleCommissioner {
+		ok(c, gin.H{
+			"managed_class":  nil,
+			"class_students": []query.ClassStudentItem{},
+		})
+		return
+	}
+	if user.ManagedClassID == nil {
+		ok(c, gin.H{
+			"managed_class":  nil,
+			"class_students": []query.ClassStudentItem{},
+		})
+		return
+	}
+
+	classItem, err := h.classes.GetClass(*user.ManagedClassID)
+	if err != nil {
+		switch {
+		case service.IsServiceError(err, service.ErrClassNotFound):
+			fail(c, 404, "managed class not found")
+		default:
+			fail(c, 500, "load managed class failed")
+		}
+		return
+	}
+	students, err := h.classes.GetClassStudents(*user.ManagedClassID)
+	if err != nil {
+		switch {
+		case service.IsServiceError(err, service.ErrClassNotFound):
+			fail(c, 404, "managed class not found")
+		default:
+			fail(c, 500, "load managed class students failed")
+		}
+		return
+	}
+
+	ok(c, gin.H{
+		"managed_class":  classItem,
+		"class_students": students,
+	})
 }
 
 func (h *apiHandler) listClassStudentCandidates(c *gin.Context) {

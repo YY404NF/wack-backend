@@ -11,11 +11,11 @@ func mountSetupRoutes(api *gin.RouterGroup, authHandler *authHandler) {
 func mountAuthRoutes(api *gin.RouterGroup, cfgMiddle gin.HandlerFunc, authHandler *authHandler) {
 	authGroup := api.Group("/auth")
 	authGroup.POST("/login", authHandler.login)
+	authGroup.POST("/logout", authHandler.logout)
 
 	protectedAuth := api.Group("")
 	protectedAuth.Use(cfgMiddle)
 	protectedAuth.GET("/auth/me", authHandler.me)
-	protectedAuth.POST("/auth/logout", authHandler.logout)
 	protectedAuth.POST("/auth/change-password", authHandler.changePassword)
 	protectedAuth.PUT("/auth/profile", authHandler.updateProfile)
 }
@@ -105,6 +105,7 @@ func mountAttendanceRoutes(admin, student *gin.RouterGroup, apiHandler *apiHandl
 	admin.GET("/attendance-record-logs", apiHandler.listAttendanceRecordLogs)
 
 	student.GET("/courses/available", apiHandler.studentAvailableCourses)
+	student.GET("/managed-class", apiHandler.studentManagedClass)
 	student.POST("/attendance-sessions", apiHandler.studentEnterAttendanceSession)
 	student.GET("/attendance-sessions/:id", apiHandler.studentGetAttendanceSession)
 	student.PATCH("/attendance-records/:id/status", apiHandler.studentUpdateAttendanceStatus)

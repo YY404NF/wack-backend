@@ -3,6 +3,7 @@ package httpserver
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -101,21 +102,23 @@ func (h *authHandler) me(c *gin.Context) {
 }
 
 func (h *authHandler) logout(c *gin.Context) {
-	user, exists := currentUser(c)
-	if !exists {
-		fail(c, 401, "unauthorized")
-		return
-	}
-
-	tokenID, exists := currentTokenID(c)
-	if !exists {
-		fail(c, 401, "unauthorized")
-		return
-	}
-
-	if err := h.sessions.DeleteSession(c.Request.Context(), tokenID, user.ID); err != nil {
-		fail(c, 500, "logout failed")
-		return
+	const bearerPrefix = "Bearer "
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" && strings.HasPrefix(authHeader, bearerPrefix) {
+		tokenString := strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
+		if tokenString != "" {
+			token, err := jwt.ParseWithClaims(tokenString, &jwtClaims{}, func(token *jwt.Token) (interface{}, error) {
+				return []byte(h.cfg.JWTSecret), nil
+			})
+			if err == nil && token != nil && token.Valid {
+				if claims, ok := token.Claims.(*jwtClaims); ok && claims.ID != "" {
+					if err := h.sessions.DeleteSession(c.Request.Context(), claims.ID, claims.UserID); err != nil {
+						fail(c, 500, "logout failed")
+						return
+					}
+				}
+			}
+		}
 	}
 	ok(c, gin.H{})
 }

@@ -46,6 +46,23 @@ func (q *ClassQuery) ListClasses(page, pageSize int) ([]model.Class, int64, erro
 	return items, total, err
 }
 
+func (q *ClassQuery) ClassByID(classID uint64) (model.Class, error) {
+	var item model.Class
+	err := q.db.Table("class").
+		Select("class.id, class.class_name, class.grade, class.major_name, class.status, class.created_at, class.updated_at, COUNT(student.id) AS student_count").
+		Joins("LEFT JOIN student ON student.class_id = class.id AND student.status = 1").
+		Where("class.id = ?", classID).
+		Group("class.id").
+		Scan(&item).Error
+	if err != nil {
+		return model.Class{}, err
+	}
+	if item.ID == 0 {
+		return model.Class{}, gorm.ErrRecordNotFound
+	}
+	return item, nil
+}
+
 type ClassStudentItem struct {
 	ID        uint64    `json:"id"`
 	ClassID   uint64    `json:"class_id"`

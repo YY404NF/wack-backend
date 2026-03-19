@@ -36,16 +36,14 @@ func (s *ClassService) CreateClass(class model.Class) (model.Class, error) {
 }
 
 func (s *ClassService) GetClass(id uint64) (model.Class, error) {
-	items, _, err := s.classes.ListClasses(1, 1000000)
+	classItem, err := s.classes.ClassByID(id)
 	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return model.Class{}, ErrClassNotFound
+		}
 		return model.Class{}, err
 	}
-	for _, class := range items {
-		if class.ID == id {
-			return class, nil
-		}
-	}
-	return model.Class{}, ErrClassNotFound
+	return classItem, nil
 }
 
 func (s *ClassService) UpdateClass(id uint64, req model.Class) (model.Class, error) {

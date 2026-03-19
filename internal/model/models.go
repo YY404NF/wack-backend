@@ -47,7 +47,7 @@ type Class struct {
 	Grade        int       `gorm:"column:grade;not null;index:idx_grade_major" json:"grade"`
 	MajorName    string    `gorm:"column:major_name;size:100;not null;index:idx_grade_major" json:"major_name"`
 	Status       int       `gorm:"column:status;not null;default:1;index:idx_status" json:"status"`
-	StudentCount int64     `gorm:"-" json:"student_count"`
+	StudentCount int64     `gorm:"column:student_count;->;-:migration" json:"student_count"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
@@ -96,8 +96,8 @@ type Course struct {
 	CourseName   string    `gorm:"column:course_name;size:100;not null;index:idx_term_course_name" json:"course_name"`
 	TeacherName  string    `gorm:"column:teacher_name;size:50;not null;index:idx_term_teacher_name" json:"teacher_name"`
 	Status       int       `gorm:"column:status;not null;default:1;index:idx_term_status" json:"status"`
-	Term         string    `gorm:"-" json:"term"`
-	StudentCount int       `gorm:"-" json:"student_count"`
+	Term         string    `gorm:"column:term;->;-:migration" json:"term"`
+	StudentCount int       `gorm:"column:student_count;->;-:migration" json:"student_count"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
