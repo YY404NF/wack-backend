@@ -8,6 +8,11 @@ import (
 	"wack-backend/internal/service"
 )
 
+type saveTermRequest struct {
+	Name          string `json:"name" binding:"required,max=20"`
+	TermStartDate string `json:"term_start_date" binding:"required,len=10"`
+}
+
 func (h *apiHandler) metaContext(c *gin.Context) {
 	user, exists := currentUser(c)
 	if !exists {
@@ -105,4 +110,57 @@ func (h *apiHandler) metaSections(c *gin.Context) {
 		"date":     now.Format("2006-01-02"),
 		"list":     h.meta.Sections(now),
 	})
+}
+
+func (h *apiHandler) adminCreateTerm(c *gin.Context) {
+	var req saveTermRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, 400, "invalid term payload")
+		return
+	}
+
+	term, err := h.meta.CreateTerm(req.Name, req.TermStartDate)
+	if err != nil {
+		if service.IsServiceError(err, service.ErrTermStartDateMustBeMonday) {
+			fail(c, 400, "term start date must be monday")
+			return
+		}
+		if service.IsServiceError(err, service.ErrInvalidInput) {
+			fail(c, 400, "invalid term payload")
+			return
+		}
+		fail(c, 500, "create term failed")
+		return
+	}
+	ok(c, term)
+}
+
+func (h *apiHandler) adminUpdateTerm(c *gin.Context) {
+	termID, err := parseUintParam(c, "term_id")
+	if err != nil {
+		fail(c, 400, "invalid term id")
+		return
+	}
+
+	var req saveTermRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, 400, "invalid term payload")
+		return
+	}
+
+	term, err := h.meta.UpdateTerm(termID, req.TermStartDate)
+	if err != nil {
+		switch {
+		case service.IsServiceError(err, service.ErrTermStartDateMustBeMonday):
+			fail(c, 400, "term start date must be monday")
+		case service.IsServiceError(err, service.ErrInvalidInput):
+			fail(c, 400, "invalid term payload")
+		case service.IsServiceError(err, service.ErrTermNotFound):
+			fail(c, 404, "term not found")
+		default:
+			fail(c, 500, "update term failed")
+		}
+		return
+	}
+	ok(c, term)
 }

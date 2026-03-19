@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -61,6 +62,67 @@ func (s *MetaService) GetLatestTerm() (*model.Term, error) {
 		return nil, err
 	}
 	return &term, nil
+}
+
+func (s *MetaService) CreateTerm(name, termStartDate string) (model.Term, error) {
+	name = strings.TrimSpace(name)
+	termStartDate = strings.TrimSpace(termStartDate)
+	if name == "" || termStartDate == "" {
+		return model.Term{}, ErrInvalidInput
+	}
+	start, err := time.Parse("2006-01-02", termStartDate)
+	if err != nil {
+		return model.Term{}, ErrInvalidInput
+	}
+	if start.Weekday() != time.Monday {
+		return model.Term{}, ErrTermStartDateMustBeMonday
+	}
+
+	var existing int64
+	if err := s.db.Model(&model.Term{}).Where("name = ?", name).Count(&existing).Error; err != nil {
+		return model.Term{}, err
+	}
+	if existing > 0 {
+		return model.Term{}, ErrInvalidInput
+	}
+
+	term := model.Term{
+		Name:          name,
+		TermStartDate: termStartDate,
+	}
+	if err := s.db.Create(&term).Error; err != nil {
+		return model.Term{}, err
+	}
+	return term, nil
+}
+
+func (s *MetaService) UpdateTerm(termID uint64, termStartDate string) (model.Term, error) {
+	termStartDate = strings.TrimSpace(termStartDate)
+	if termStartDate == "" {
+		return model.Term{}, ErrInvalidInput
+	}
+	start, err := time.Parse("2006-01-02", termStartDate)
+	if err != nil {
+		return model.Term{}, ErrInvalidInput
+	}
+	if start.Weekday() != time.Monday {
+		return model.Term{}, ErrTermStartDateMustBeMonday
+	}
+
+	var term model.Term
+	if err := s.db.First(&term, termID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return model.Term{}, ErrTermNotFound
+		}
+		return model.Term{}, err
+	}
+	if err := s.db.Model(&term).Update("term_start_date", termStartDate).Error; err != nil {
+		return model.Term{}, err
+	}
+	if err := s.db.First(&term, term.ID).Error; err != nil {
+		return model.Term{}, err
+	}
+	return term, nil
 }
 
 func (s *MetaService) Sections(now time.Time) []SectionMetaItem {

@@ -91,6 +91,8 @@ func mountCourseRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 func mountSystemSettingRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 	admin.GET("/system-settings", apiHandler.getSystemSetting)
 	admin.PUT("/system-settings", apiHandler.updateSystemSetting)
+	admin.POST("/terms", apiHandler.adminCreateTerm)
+	admin.PUT("/terms/:term_id", apiHandler.adminUpdateTerm)
 }
 
 func mountAttendanceRoutes(admin, student *gin.RouterGroup, apiHandler *apiHandler) {
