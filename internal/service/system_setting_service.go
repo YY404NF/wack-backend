@@ -47,9 +47,32 @@ func inferScheduleByDate(now time.Time) string {
 	return "autumn"
 }
 
-func (s *SystemSettingService) GetSystemSetting() (model.SystemSetting, error) {
+func (s *SystemSettingService) resolveActiveTerm(now time.Time) (model.Term, error) {
 	var term model.Term
-	if err := s.db.Order("id DESC").First(&term).Error; err != nil {
+	today := now.Format("2006-01-02")
+	err := s.db.
+		Where("term_start_date <= ?", today).
+		Order("term_start_date DESC, id DESC").
+		First(&term).Error
+	switch {
+	case err == nil:
+		return term, nil
+	case err != gorm.ErrRecordNotFound:
+		return model.Term{}, err
+	}
+
+	err = s.db.
+		Order("term_start_date ASC, id ASC").
+		First(&term).Error
+	if err != nil {
+		return model.Term{}, err
+	}
+	return term, nil
+}
+
+func (s *SystemSettingService) GetSystemSetting() (model.SystemSetting, error) {
+	term, err := s.resolveActiveTerm(time.Now())
+	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return model.SystemSetting{
 				CurrentTermStartDate: "",
@@ -81,8 +104,7 @@ func (s *SystemSettingService) UpdateSystemSetting(startDate string) (model.Syst
 		return model.SystemSetting{}, ErrInvalidInput
 	}
 
-	var term model.Term
-	err = s.db.Order("id DESC").First(&term).Error
+	term, err := s.resolveActiveTerm(time.Now())
 	switch {
 	case err == nil:
 		if err := s.db.Model(&term).Update("term_start_date", startDate).Error; err != nil {

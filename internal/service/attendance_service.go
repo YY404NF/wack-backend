@@ -22,8 +22,10 @@ type AttendanceStatusInput struct {
 }
 
 type SubmitAttendanceStatusesResult struct {
-	AppliedCount int `json:"applied_count"`
-	IgnoredCount int `json:"ignored_count"`
+	AcceptedItems []uint64 `json:"accepted_items"`
+	IgnoredItems  []uint64 `json:"ignored_items"`
+	AppliedCount  int      `json:"applied_count"`
+	IgnoredCount  int      `json:"ignored_count"`
 }
 
 func NewAttendanceService(db *gorm.DB) *AttendanceService {
@@ -166,12 +168,14 @@ func (s *AttendanceService) SubmitAttendanceStatusesForClass(checkID uint64, ope
 			_, group, relation, err := s.loadAttendanceStudentContext(tx, lesson.ID, item.StudentRefID)
 			if err != nil {
 				if IsServiceError(err, ErrAttendanceRecordNotFound) || IsServiceError(err, ErrCourseGroupLessonNotFound) {
+					result.IgnoredItems = append(result.IgnoredItems, item.StudentRefID)
 					result.IgnoredCount++
 					continue
 				}
 				return err
 			}
 			if classID != nil && (relation.ClassID == nil || *relation.ClassID != *classID) {
+				result.IgnoredItems = append(result.IgnoredItems, item.StudentRefID)
 				result.IgnoredCount++
 				continue
 			}
@@ -179,6 +183,7 @@ func (s *AttendanceService) SubmitAttendanceStatusesForClass(checkID uint64, ope
 			var record model.AttendanceRecord
 			err = tx.Where("course_group_lesson_id = ? AND student_id = ?", lesson.ID, item.StudentRefID).First(&record).Error
 			if err == nil {
+				result.IgnoredItems = append(result.IgnoredItems, item.StudentRefID)
 				result.IgnoredCount++
 				continue
 			}
@@ -203,6 +208,7 @@ func (s *AttendanceService) SubmitAttendanceStatusesForClass(checkID uint64, ope
 			if err := s.audit.logAttendanceStatusCreate(tx, record, operatorUserID, item.Status, now); err != nil {
 				return err
 			}
+			result.AcceptedItems = append(result.AcceptedItems, item.StudentRefID)
 			result.AppliedCount++
 		}
 		return nil
@@ -343,22 +349,5 @@ func (s *AttendanceService) AbandonAttendanceSession(checkID uint64, withinDeadl
 	if !withinDeadline(lesson, time.Now()) {
 		return ErrAttendanceDeadlinePassed
 	}
-
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		var recordIDs []uint64
-		if err := tx.Model(&model.AttendanceRecord{}).
-			Where("course_group_lesson_id = ?", lesson.ID).
-			Pluck("id", &recordIDs).Error; err != nil {
-			return err
-		}
-		if len(recordIDs) > 0 {
-			if err := tx.Where("attendance_record_id IN ?", recordIDs).Delete(&model.AttendanceRecordLog{}).Error; err != nil {
-				return err
-			}
-		}
-		if err := tx.Where("course_group_lesson_id = ?", lesson.ID).Delete(&model.AttendanceRecord{}).Error; err != nil {
-			return err
-		}
-		return nil
-	})
+	return nil
 }

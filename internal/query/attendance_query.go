@@ -267,7 +267,7 @@ func (q *AttendanceQuery) AvailableCourseGroupLessonsForClass(weekday, weekNo in
 	var sessions []SessionWithCourse
 	err := q.db.Table("course_group_lesson").
 		Select(`
-			DISTINCT course_group_lesson.id,
+			course_group_lesson.id,
 			course_group.course_id,
 			ROW_NUMBER() OVER (
 				PARTITION BY course_group.course_id
@@ -283,8 +283,16 @@ func (q *AttendanceQuery) AvailableCourseGroupLessonsForClass(weekday, weekNo in
 		`).
 		Joins("JOIN course_group ON course_group.id = course_group_lesson.course_group_id").
 		Joins("JOIN course ON course.id = course_group.course_id").
-		Joins("JOIN course_group_student ON course_group_student.course_group_id = course_group.id AND course_group_student.class_id = ? AND course_group_student.status = 1", classID).
 		Where("course_group_lesson.weekday = ? AND course_group_lesson.week_no = ? AND course_group_lesson.status = 1 AND course_group.status = 1", weekday, weekNo).
+		Where(`
+			EXISTS (
+				SELECT 1
+				FROM course_group_student
+				WHERE course_group_student.course_group_id = course_group.id
+				  AND course_group_student.class_id = ?
+				  AND course_group_student.status = 1
+			)
+		`, classID).
 		Order("course_group_lesson.section ASC, course_group_lesson.id ASC").
 		Scan(&sessions).Error
 	return sessions, err
