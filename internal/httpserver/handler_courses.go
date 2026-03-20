@@ -73,6 +73,25 @@ func (h *apiHandler) listCourseGroups(c *gin.Context) {
 	ok(c, items)
 }
 
+func (h *apiHandler) getCourseSummary(c *gin.Context) {
+	courseID, err := parseUintParam(c, "id")
+	if err != nil {
+		fail(c, 400, err.Error())
+		return
+	}
+	item, err := h.courses.GetCourseSummary(courseID)
+	if err != nil {
+		switch {
+		case service.IsServiceError(err, service.ErrCourseNotFound):
+			fail(c, 404, "course not found")
+		default:
+			fail(c, 500, "load course summary failed")
+		}
+		return
+	}
+	ok(c, item)
+}
+
 func (h *apiHandler) createCourseGroup(c *gin.Context) {
 	courseID, err := parseUintParam(c, "id")
 	if err != nil {
@@ -303,6 +322,7 @@ func (h *apiHandler) listCourseGroupStudents(c *gin.Context) {
 }
 
 func (h *apiHandler) listAvailableCourseGroupClasses(c *gin.Context) {
+	page, pageSize := parsePage(c)
 	courseID, err := parseUintParam(c, "id")
 	if err != nil {
 		fail(c, 400, err.Error())
@@ -313,7 +333,7 @@ func (h *apiHandler) listAvailableCourseGroupClasses(c *gin.Context) {
 		fail(c, 400, err.Error())
 		return
 	}
-	items, err := h.courses.ListAvailableCourseGroupClasses(courseID, groupID, c.Query("keyword"))
+	items, total, err := h.courses.ListAvailableCourseGroupClasses(courseID, groupID, c.Query("keyword"), page, pageSize)
 	if err != nil {
 		switch {
 		case service.IsServiceError(err, service.ErrCourseGroupNotFound):
@@ -323,7 +343,7 @@ func (h *apiHandler) listAvailableCourseGroupClasses(c *gin.Context) {
 		}
 		return
 	}
-	ok(c, items)
+	ok(c, pageResult[query.AvailableCourseGroupClassItem]{Items: items, Page: page, PageSize: pageSize, Total: total})
 }
 
 func (h *apiHandler) addCourseGroupClasses(c *gin.Context) {
@@ -389,6 +409,7 @@ func (h *apiHandler) removeCourseGroupClass(c *gin.Context) {
 }
 
 func (h *apiHandler) listAvailableCourseGroupStudents(c *gin.Context) {
+	page, pageSize := parsePage(c)
 	courseID, err := parseUintParam(c, "id")
 	if err != nil {
 		fail(c, 400, err.Error())
@@ -399,7 +420,7 @@ func (h *apiHandler) listAvailableCourseGroupStudents(c *gin.Context) {
 		fail(c, 400, err.Error())
 		return
 	}
-	items, err := h.courses.ListAvailableCourseGroupStudents(courseID, groupID, c.Query("keyword"))
+	items, total, err := h.courses.ListAvailableCourseGroupStudents(courseID, groupID, c.Query("keyword"), page, pageSize)
 	if err != nil {
 		switch {
 		case service.IsServiceError(err, service.ErrCourseGroupNotFound):
@@ -409,7 +430,7 @@ func (h *apiHandler) listAvailableCourseGroupStudents(c *gin.Context) {
 		}
 		return
 	}
-	ok(c, items)
+	ok(c, pageResult[query.AvailableCourseGroupStudentItem]{Items: items, Page: page, PageSize: pageSize, Total: total})
 }
 
 func (h *apiHandler) addCourseGroupStudents(c *gin.Context) {

@@ -206,7 +206,7 @@ func (q *CourseQuery) CourseGroupLessons(groupID uint64) ([]model.CourseGroupLes
 	return lessons, err
 }
 
-func (q *CourseQuery) AvailableCourseGroupClasses(groupID uint64, keyword string) ([]AvailableCourseGroupClassItem, error) {
+func (q *CourseQuery) AvailableCourseGroupClasses(groupID uint64, keyword string, page, pageSize int) ([]AvailableCourseGroupClassItem, int64, error) {
 	query := q.db.Table("class").
 		Select("class.id, class.class_name, class.grade, class.major_name, COUNT(student.id) AS student_count").
 		Joins("LEFT JOIN student ON student.class_id = class.id AND student.status = 1").
@@ -221,11 +221,20 @@ func (q *CourseQuery) AvailableCourseGroupClasses(groupID uint64, keyword string
 		query = query.Where("class.class_name LIKE ? OR class.major_name LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
 	}
 	var items []AvailableCourseGroupClassItem
-	err := query.Order("class.grade DESC, class.major_name ASC, class.class_name ASC").Scan(&items).Error
-	return items, err
+	query = query.Group("class.id")
+
+	var total int64
+	if err := q.db.Table("(?) AS available_classes", query).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := query.Order("class.grade DESC, class.major_name ASC, class.class_name ASC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Scan(&items).Error
+	return items, total, err
 }
 
-func (q *CourseQuery) AvailableCourseGroupStudents(groupID uint64, keyword string) ([]AvailableCourseGroupStudentItem, error) {
+func (q *CourseQuery) AvailableCourseGroupStudents(groupID uint64, keyword string, page, pageSize int) ([]AvailableCourseGroupStudentItem, int64, error) {
 	query := q.db.Table("student").
 		Select("student.id, student.class_id, student.student_no, student.student_name, class.class_name, class.grade, class.major_name").
 		Joins("JOIN class ON class.id = student.class_id").
@@ -241,9 +250,16 @@ func (q *CourseQuery) AvailableCourseGroupStudents(groupID uint64, keyword strin
 			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%",
 		)
 	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	var items []AvailableCourseGroupStudentItem
-	err := query.Order("class.class_name ASC, student.student_no ASC, student.id ASC").Scan(&items).Error
-	return items, err
+	err := query.Order("class.class_name ASC, student.student_no ASC, student.id ASC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Scan(&items).Error
+	return items, total, err
 }
 
 func (q *CourseQuery) ListCourses(term, teacher, keyword string, classID uint64, page, pageSize int) ([]CourseListItem, int64, error) {

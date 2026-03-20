@@ -71,6 +71,7 @@ func mountStudentRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 
 func mountCourseRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 	admin.GET("/courses", apiHandler.listCourses)
+	admin.GET("/courses/:id/summary", apiHandler.getCourseSummary)
 	admin.POST("/courses", apiHandler.createCourse)
 	admin.GET("/courses/:id/groups", apiHandler.listCourseGroups)
 	admin.POST("/courses/:id/groups", apiHandler.createCourseGroup)

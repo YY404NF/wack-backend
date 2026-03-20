@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"wack-backend/internal/model"
 	"wack-backend/internal/query"
@@ -44,6 +43,10 @@ func (s *CourseService) ListCourseGroups(courseID uint64) ([]query.CourseGroupLi
 		return nil, err
 	}
 	return s.courses.CourseGroups(courseID)
+}
+
+func (s *CourseService) GetCourseSummary(courseID uint64) (model.Course, error) {
+	return s.loadCourseView(courseID)
 }
 
 func (s *CourseService) GetCourseGroup(courseID, groupID uint64) (model.CourseGroup, []query.CourseGroupStudentItem, []model.CourseGroupLesson, error) {
@@ -158,24 +161,24 @@ func (s *CourseService) GetCourseGroupStudents(courseID, groupID uint64) ([]quer
 	return s.courses.CourseGroupStudents(groupID)
 }
 
-func (s *CourseService) ListAvailableCourseGroupClasses(courseID, groupID uint64, keyword string) ([]query.AvailableCourseGroupClassItem, error) {
+func (s *CourseService) ListAvailableCourseGroupClasses(courseID, groupID uint64, keyword string, page, pageSize int) ([]query.AvailableCourseGroupClassItem, int64, error) {
 	if _, err := s.courses.CourseGroup(courseID, groupID); err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, ErrCourseGroupNotFound
+			return nil, 0, ErrCourseGroupNotFound
 		}
-		return nil, err
+		return nil, 0, err
 	}
-	return s.courses.AvailableCourseGroupClasses(groupID, strings.TrimSpace(keyword))
+	return s.courses.AvailableCourseGroupClasses(groupID, strings.TrimSpace(keyword), page, pageSize)
 }
 
-func (s *CourseService) ListAvailableCourseGroupStudents(courseID, groupID uint64, keyword string) ([]query.AvailableCourseGroupStudentItem, error) {
+func (s *CourseService) ListAvailableCourseGroupStudents(courseID, groupID uint64, keyword string, page, pageSize int) ([]query.AvailableCourseGroupStudentItem, int64, error) {
 	if _, err := s.courses.CourseGroup(courseID, groupID); err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, ErrCourseGroupNotFound
+			return nil, 0, ErrCourseGroupNotFound
 		}
-		return nil, err
+		return nil, 0, err
 	}
-	return s.courses.AvailableCourseGroupStudents(groupID, strings.TrimSpace(keyword))
+	return s.courses.AvailableCourseGroupStudents(groupID, strings.TrimSpace(keyword), page, pageSize)
 }
 
 func (s *CourseService) CreateCourseGroup(courseID uint64) (model.CourseGroup, error) {
@@ -193,8 +196,40 @@ func (s *CourseService) CreateCourseGroup(courseID uint64) (model.CourseGroup, e
 
 func (s *CourseService) DeleteCourseGroup(courseID, groupID uint64) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		if _, err := ensureCourseGroupExists(tx, courseID, groupID); err != nil {
+		group, err := ensureCourseGroupExists(tx, courseID, groupID)
+		if err != nil {
 			return err
+		}
+		var lessonIDs []uint64
+		if err := tx.Model(&model.CourseGroupLesson{}).
+			Where("course_group_id = ? AND status = 1", groupID).
+			Pluck("id", &lessonIDs).Error; err != nil {
+			return err
+		}
+		hasHistory := false
+		if len(lessonIDs) > 0 {
+			var recordCount int64
+			if err := tx.Model(&model.AttendanceRecord{}).
+				Where("course_group_lesson_id IN ?", lessonIDs).
+				Count(&recordCount).Error; err != nil {
+				return err
+			}
+			hasHistory = recordCount > 0
+		}
+		if hasHistory {
+			if err := tx.Model(&model.CourseGroupLesson{}).
+				Where("course_group_id = ? AND status = 1", groupID).
+				Update("status", 0).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&model.CourseGroupStudent{}).
+				Where("course_group_id = ? AND status = 1", groupID).
+				Update("status", 0).Error; err != nil {
+				return err
+			}
+			return tx.Model(&model.CourseGroup{}).
+				Where("id = ? AND course_id = ? AND status = 1", group.ID, courseID).
+				Update("status", 0).Error
 		}
 		if err := tx.Where("course_group_id = ?", groupID).Delete(&model.CourseGroupLesson{}).Error; err != nil {
 			return err
@@ -226,25 +261,23 @@ func (s *CourseService) AddCourseGroupClasses(courseID, groupID uint64, classIDs
 		if len(students) == 0 {
 			return nil
 		}
-		relations := make([]model.CourseGroupStudent, 0, len(students))
 		for _, student := range students {
 			if student.ClassID == nil {
 				continue
 			}
 			classID := new(uint64)
 			*classID = *student.ClassID
-			relations = append(relations, model.CourseGroupStudent{
+			if err := upsertCourseGroupStudent(tx, model.CourseGroupStudent{
 				TermID:        group.TermID,
 				CourseGroupID: group.ID,
 				StudentID:     student.ID,
 				ClassID:       classID,
 				Status:        1,
-			})
+			}); err != nil {
+				return err
+			}
 		}
-		return tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "term_id"}, {Name: "course_group_id"}, {Name: "student_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"class_id", "status", "updated_at"}),
-		}).Create(&relations).Error
+		return nil
 	})
 }
 
@@ -253,14 +286,27 @@ func (s *CourseService) RemoveCourseGroupClass(courseID, groupID, classID uint64
 		if _, err := ensureCourseGroupExists(tx, courseID, groupID); err != nil {
 			return err
 		}
-		result := tx.Where("course_group_id = ? AND class_id = ?", groupID, classID).Delete(&model.CourseGroupStudent{})
-		if result.Error != nil {
-			return result.Error
+		var relationCount int64
+		if err := tx.Model(&model.CourseGroupStudent{}).
+			Where("course_group_id = ? AND class_id = ? AND status = 1", groupID, classID).
+			Count(&relationCount).Error; err != nil {
+			return err
 		}
-		if result.RowsAffected == 0 {
+		if relationCount == 0 {
 			return ErrClassNotFound
 		}
-		return nil
+		hasHistory, err := courseGroupMemberHasHistory(tx, groupID, func(db *gorm.DB) *gorm.DB {
+			return db.Where("class_id = ?", classID)
+		})
+		if err != nil {
+			return err
+		}
+		if hasHistory {
+			return tx.Model(&model.CourseGroupStudent{}).
+				Where("course_group_id = ? AND class_id = ? AND status = 1", groupID, classID).
+				Update("status", 0).Error
+		}
+		return tx.Where("course_group_id = ? AND class_id = ? AND status = 1", groupID, classID).Delete(&model.CourseGroupStudent{}).Error
 	})
 }
 
@@ -281,20 +327,18 @@ func (s *CourseService) AddCourseGroupStudents(courseID, groupID uint64, student
 		if len(students) != len(studentIDs) {
 			return ErrStudentNotFound
 		}
-		relations := make([]model.CourseGroupStudent, 0, len(students))
 		for _, student := range students {
-			relations = append(relations, model.CourseGroupStudent{
+			if err := upsertCourseGroupStudent(tx, model.CourseGroupStudent{
 				TermID:        group.TermID,
 				CourseGroupID: group.ID,
 				StudentID:     student.ID,
 				ClassID:       nil,
 				Status:        1,
-			})
+			}); err != nil {
+				return err
+			}
 		}
-		return tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "term_id"}, {Name: "course_group_id"}, {Name: "student_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"class_id", "status", "updated_at"}),
-		}).Create(&relations).Error
+		return nil
 	})
 }
 
@@ -303,14 +347,27 @@ func (s *CourseService) RemoveCourseGroupStudent(courseID, groupID, studentID ui
 		if _, err := ensureCourseGroupExists(tx, courseID, groupID); err != nil {
 			return err
 		}
-		result := tx.Where("course_group_id = ? AND student_id = ?", groupID, studentID).Delete(&model.CourseGroupStudent{})
-		if result.Error != nil {
-			return result.Error
+		var relationCount int64
+		if err := tx.Model(&model.CourseGroupStudent{}).
+			Where("course_group_id = ? AND student_id = ? AND status = 1", groupID, studentID).
+			Count(&relationCount).Error; err != nil {
+			return err
 		}
-		if result.RowsAffected == 0 {
+		if relationCount == 0 {
 			return ErrStudentNotFound
 		}
-		return nil
+		hasHistory, err := courseGroupMemberHasHistory(tx, groupID, func(db *gorm.DB) *gorm.DB {
+			return db.Where("student_id = ?", studentID)
+		})
+		if err != nil {
+			return err
+		}
+		if hasHistory {
+			return tx.Model(&model.CourseGroupStudent{}).
+				Where("course_group_id = ? AND student_id = ? AND status = 1", groupID, studentID).
+				Update("status", 0).Error
+		}
+		return tx.Where("course_group_id = ? AND student_id = ? AND status = 1", groupID, studentID).Delete(&model.CourseGroupStudent{}).Error
 	})
 }
 
@@ -471,6 +528,42 @@ func normalizeUint64s(values []uint64) []uint64 {
 		result = append(result, value)
 	}
 	return result
+}
+
+func upsertCourseGroupStudent(tx *gorm.DB, relation model.CourseGroupStudent) error {
+	var existing model.CourseGroupStudent
+	err := tx.Where(
+		"term_id = ? AND course_group_id = ? AND student_id = ?",
+		relation.TermID,
+		relation.CourseGroupID,
+		relation.StudentID,
+	).First(&existing).Error
+	if err == nil {
+		return tx.Model(&existing).Updates(map[string]interface{}{
+			"class_id": relation.ClassID,
+			"status":   relation.Status,
+		}).Error
+	}
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return err
+	}
+	return tx.Create(&relation).Error
+}
+
+func courseGroupMemberHasHistory(tx *gorm.DB, groupID uint64, scope func(*gorm.DB) *gorm.DB) (bool, error) {
+	lessonQuery := tx.Model(&model.CourseGroupLesson{}).
+		Select("id").
+		Where("course_group_id = ? AND status = 1", groupID)
+	recordQuery := tx.Model(&model.AttendanceRecord{}).
+		Where("course_group_lesson_id IN (?)", lessonQuery)
+	if scope != nil {
+		recordQuery = scope(recordQuery)
+	}
+	var recordCount int64
+	if err := recordQuery.Count(&recordCount).Error; err != nil {
+		return false, err
+	}
+	return recordCount > 0, nil
 }
 
 func ensureClassesExist(db *gorm.DB, classIDs []uint64) error {
