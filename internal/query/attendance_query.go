@@ -13,6 +13,77 @@ type AttendanceDashboardSummary struct {
 	Leave   int64 `json:"leave"`
 }
 
+type OverviewCourseRankingItem struct {
+	CourseID       uint64  `json:"course_id"`
+	CourseName     string  `json:"course_name"`
+	TeacherName    string  `json:"teacher_name"`
+	Grade          int     `json:"grade"`
+	ArrivedCount   int64   `json:"arrived_count"`
+	TotalCount     int64   `json:"total_count"`
+	AttendanceRate float64 `json:"attendance_rate"`
+}
+
+type OverviewClassRankingItem struct {
+	ClassID        uint64  `json:"class_id"`
+	ClassName      string  `json:"class_name"`
+	MajorName      string  `json:"major_name"`
+	Grade          int     `json:"grade"`
+	ArrivedCount   int64   `json:"arrived_count"`
+	TotalCount     int64   `json:"total_count"`
+	AttendanceRate float64 `json:"attendance_rate"`
+}
+
+type OverviewStudentRankingItem struct {
+	StudentRefID   uint64  `json:"student_ref_id"`
+	StudentID      string  `json:"student_id"`
+	RealName       string  `json:"real_name"`
+	ClassName      string  `json:"class_name"`
+	ArrivedCount   int64   `json:"arrived_count"`
+	TotalCount     int64   `json:"total_count"`
+	AttendanceRate float64 `json:"attendance_rate"`
+}
+
+type OverviewRecentSessionItem struct {
+	CourseGroupLessonID uint64  `json:"course_group_lesson_id"`
+	CourseName          string  `json:"course_name"`
+	TeacherName         string  `json:"teacher_name"`
+	WeekNo              int     `json:"week_no"`
+	Weekday             int     `json:"weekday"`
+	Section             int     `json:"section"`
+	BuildingName        string  `json:"building_name"`
+	RoomName            string  `json:"room_name"`
+	ClassSummary        string  `json:"class_summary"`
+	RecordCount         int64   `json:"record_count"`
+	PresentCount        int64   `json:"present_count"`
+	LateCount           int64   `json:"late_count"`
+	AbsentCount         int64   `json:"absent_count"`
+	LeaveCount          int64   `json:"leave_count"`
+	AttendanceRate      float64 `json:"attendance_rate"`
+}
+
+type OverviewRecentAbnormalItem struct {
+	AttendanceRecordID uint64 `json:"attendance_record_id"`
+	StudentRefID       uint64 `json:"student_ref_id"`
+	StudentID          string `json:"student_id"`
+	RealName           string `json:"real_name"`
+	ClassName          string `json:"class_name"`
+	CourseName         string `json:"course_name"`
+	TeacherName        string `json:"teacher_name"`
+	Status             int    `json:"status"`
+	WeekNo             int    `json:"week_no"`
+	Weekday            int    `json:"weekday"`
+	Section            int    `json:"section"`
+}
+
+type AdminOverviewData struct {
+	Term                   string                       `json:"term"`
+	CourseRankings         []OverviewCourseRankingItem  `json:"course_rankings"`
+	ClassRankings          []OverviewClassRankingItem   `json:"class_rankings"`
+	StudentRankings        []OverviewStudentRankingItem `json:"student_rankings"`
+	RecentSessions         []OverviewRecentSessionItem  `json:"recent_sessions"`
+	RecentAbnormalStudents []OverviewRecentAbnormalItem `json:"recent_abnormal_students"`
+}
+
 type AttendanceResultItem struct {
 	CourseGroupLessonID uint64 `json:"course_group_lesson_id"`
 	AttendanceRecordID  uint64 `json:"attendance_record_id"`
@@ -141,6 +212,173 @@ func (q *AttendanceQuery) DashboardSummary(weekNo, term, courseID string) (Atten
 		*target = count
 	}
 	return result, nil
+}
+
+func (q *AttendanceQuery) OverviewCourseRankings(termName string) ([]OverviewCourseRankingItem, error) {
+	var items []OverviewCourseRankingItem
+	err := q.db.Raw(`
+		SELECT
+			course.id AS course_id,
+			course.course_name,
+			course.teacher_name,
+			course.grade,
+			SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS arrived_count,
+			SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) AS total_count,
+			CASE
+				WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 0
+				ELSE CAST(SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS REAL)
+					/ SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END)
+			END AS attendance_rate
+		FROM attendance_record
+		JOIN course ON course.id = attendance_record.course_id
+		JOIN term ON term.id = attendance_record.term_id
+		WHERE term.name = ?
+		GROUP BY course.id, course.course_name, course.teacher_name, course.grade
+		ORDER BY attendance_rate DESC, total_count DESC, course.course_name ASC
+	`, termName).Scan(&items).Error
+	return items, err
+}
+
+func (q *AttendanceQuery) OverviewClassRankings(termName string) ([]OverviewClassRankingItem, error) {
+	var items []OverviewClassRankingItem
+	err := q.db.Raw(`
+		SELECT
+			class.id AS class_id,
+			class.class_name,
+			class.major_name,
+			class.grade,
+			SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS arrived_count,
+			SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) AS total_count,
+			CASE
+				WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 0
+				ELSE CAST(SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS REAL)
+					/ SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END)
+			END AS attendance_rate
+		FROM attendance_record
+		JOIN class ON class.id = attendance_record.class_id
+		JOIN term ON term.id = attendance_record.term_id
+		WHERE term.name = ?
+		GROUP BY class.id, class.class_name, class.major_name, class.grade
+		ORDER BY attendance_rate DESC, total_count DESC, class.class_name ASC
+	`, termName).Scan(&items).Error
+	return items, err
+}
+
+func (q *AttendanceQuery) OverviewStudentRankings(termName string) ([]OverviewStudentRankingItem, error) {
+	var items []OverviewStudentRankingItem
+	err := q.db.Raw(`
+		SELECT
+			student.id AS student_ref_id,
+			student.student_no AS student_id,
+			student.student_name AS real_name,
+			COALESCE(class.class_name, '其他学生') AS class_name,
+			SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS arrived_count,
+			SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) AS total_count,
+			CASE
+				WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 0
+				ELSE CAST(SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS REAL)
+					/ SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END)
+			END AS attendance_rate
+		FROM attendance_record
+		JOIN student ON student.id = attendance_record.student_id
+		LEFT JOIN class ON class.id = attendance_record.class_id
+		JOIN term ON term.id = attendance_record.term_id
+		WHERE term.name = ?
+		GROUP BY student.id, student.student_no, student.student_name, class.class_name
+		ORDER BY attendance_rate DESC, total_count DESC, student.student_no ASC
+	`, termName).Scan(&items).Error
+	return items, err
+}
+
+func (q *AttendanceQuery) OverviewRecentSessions(termName string) ([]OverviewRecentSessionItem, error) {
+	var items []OverviewRecentSessionItem
+	err := q.db.Raw(`
+		SELECT
+			course_group_lesson.id AS course_group_lesson_id,
+			course.course_name,
+			course.teacher_name,
+			course_group_lesson.week_no,
+			course_group_lesson.weekday,
+			course_group_lesson.section,
+			course_group_lesson.building_name,
+			course_group_lesson.room_name,
+			COALESCE((
+				SELECT GROUP_CONCAT(class_name, '、')
+				FROM (
+					SELECT DISTINCT class.class_name AS class_name
+					FROM course_group_student
+					JOIN class ON class.id = course_group_student.class_id
+					WHERE course_group_student.course_group_id = course_group.id
+					  AND course_group_student.class_id IS NOT NULL
+					  AND course_group_student.status = 1
+					ORDER BY class.class_name
+				)
+			), '其他学生') AS class_summary,
+			COUNT(attendance_record.id) AS record_count,
+			SUM(CASE WHEN attendance_record.attendance_status = 0 THEN 1 ELSE 0 END) AS present_count,
+			SUM(CASE WHEN attendance_record.attendance_status = 1 THEN 1 ELSE 0 END) AS late_count,
+			SUM(CASE WHEN attendance_record.attendance_status = 2 THEN 1 ELSE 0 END) AS absent_count,
+			SUM(CASE WHEN attendance_record.attendance_status = 3 THEN 1 ELSE 0 END) AS leave_count,
+			CASE
+				WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 0
+				ELSE CAST(SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS REAL)
+					/ SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END)
+			END AS attendance_rate
+		FROM attendance_record
+		JOIN course_group_lesson ON course_group_lesson.id = attendance_record.course_group_lesson_id
+		JOIN course_group ON course_group.id = course_group_lesson.course_group_id
+		JOIN course ON course.id = course_group.course_id
+		JOIN term ON term.id = attendance_record.term_id
+		WHERE term.name = ?
+		GROUP BY
+			course_group_lesson.id,
+			course.course_name,
+			course.teacher_name,
+			course_group_lesson.week_no,
+			course_group_lesson.weekday,
+			course_group_lesson.section,
+			course_group_lesson.building_name,
+			course_group_lesson.room_name,
+			course_group.id
+		ORDER BY
+			course_group_lesson.week_no DESC,
+			course_group_lesson.weekday DESC,
+			course_group_lesson.section DESC,
+			course_group_lesson.id DESC
+	`, termName).Scan(&items).Error
+	return items, err
+}
+
+func (q *AttendanceQuery) OverviewRecentAbnormalStudents(termName string) ([]OverviewRecentAbnormalItem, error) {
+	var items []OverviewRecentAbnormalItem
+	err := q.db.Raw(`
+		SELECT
+			attendance_record.id AS attendance_record_id,
+			student.id AS student_ref_id,
+			student.student_no AS student_id,
+			student.student_name AS real_name,
+			COALESCE(class.class_name, '其他学生') AS class_name,
+			course.course_name,
+			course.teacher_name,
+			attendance_record.attendance_status AS status,
+			course_group_lesson.week_no,
+			course_group_lesson.weekday,
+			course_group_lesson.section
+		FROM attendance_record
+		JOIN student ON student.id = attendance_record.student_id
+		LEFT JOIN class ON class.id = attendance_record.class_id
+		JOIN course_group_lesson ON course_group_lesson.id = attendance_record.course_group_lesson_id
+		JOIN course ON course.id = attendance_record.course_id
+		JOIN term ON term.id = attendance_record.term_id
+		WHERE term.name = ?
+		  AND attendance_record.attendance_status IN (1, 2, 3)
+		ORDER BY
+			course_group_lesson.week_no DESC,
+			course_group_lesson.weekday DESC,
+			course_group_lesson.section DESC,
+			attendance_record.id DESC
+	`, termName).Scan(&items).Error
+	return items, err
 }
 
 func (q *AttendanceQuery) AttendanceResults(weekNo, courseID, status string, page, pageSize int) ([]AttendanceResultItem, int64, error) {

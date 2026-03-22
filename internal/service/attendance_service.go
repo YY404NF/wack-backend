@@ -32,6 +32,53 @@ func NewAttendanceService(db *gorm.DB) *AttendanceService {
 	return &AttendanceService{db: db, attendance: query.NewAttendanceQuery(db), audit: newAuditLogger()}
 }
 
+func (s *AttendanceService) AdminOverview() (query.AdminOverviewData, error) {
+	term, err := s.resolveActiveTerm(time.Now())
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return query.AdminOverviewData{
+				Term:                   "",
+				CourseRankings:         []query.OverviewCourseRankingItem{},
+				ClassRankings:          []query.OverviewClassRankingItem{},
+				StudentRankings:        []query.OverviewStudentRankingItem{},
+				RecentSessions:         []query.OverviewRecentSessionItem{},
+				RecentAbnormalStudents: []query.OverviewRecentAbnormalItem{},
+			}, nil
+		}
+		return query.AdminOverviewData{}, err
+	}
+
+	courseRankings, err := s.attendance.OverviewCourseRankings(term.Name)
+	if err != nil {
+		return query.AdminOverviewData{}, err
+	}
+	classRankings, err := s.attendance.OverviewClassRankings(term.Name)
+	if err != nil {
+		return query.AdminOverviewData{}, err
+	}
+	studentRankings, err := s.attendance.OverviewStudentRankings(term.Name)
+	if err != nil {
+		return query.AdminOverviewData{}, err
+	}
+	recentSessions, err := s.attendance.OverviewRecentSessions(term.Name)
+	if err != nil {
+		return query.AdminOverviewData{}, err
+	}
+	recentAbnormalStudents, err := s.attendance.OverviewRecentAbnormalStudents(term.Name)
+	if err != nil {
+		return query.AdminOverviewData{}, err
+	}
+
+	return query.AdminOverviewData{
+		Term:                   term.Name,
+		CourseRankings:         courseRankings,
+		ClassRankings:          classRankings,
+		StudentRankings:        studentRankings,
+		RecentSessions:         recentSessions,
+		RecentAbnormalStudents: recentAbnormalStudents,
+	}, nil
+}
+
 func (s *AttendanceService) DashboardSummary(weekNo, term, courseID string) (query.AttendanceDashboardSummary, error) {
 	return s.attendance.DashboardSummary(weekNo, term, courseID)
 }
@@ -42,6 +89,29 @@ func (s *AttendanceService) AttendanceResults(weekNo, courseID, status string, p
 
 func (s *AttendanceService) AttendanceSessionSummaries(keyword, weekNo, status string, page, pageSize int) ([]query.AttendanceSessionSummaryItem, int64, error) {
 	return s.attendance.AttendanceSessionSummaries(keyword, weekNo, status, page, pageSize)
+}
+
+func (s *AttendanceService) resolveActiveTerm(now time.Time) (model.Term, error) {
+	var term model.Term
+	today := now.Format("2006-01-02")
+	err := s.db.
+		Where("term_start_date <= ?", today).
+		Order("term_start_date DESC, id DESC").
+		First(&term).Error
+	switch {
+	case err == nil:
+		return term, nil
+	case !errors.Is(err, gorm.ErrRecordNotFound):
+		return model.Term{}, err
+	}
+
+	err = s.db.
+		Order("term_start_date ASC, id ASC").
+		First(&term).Error
+	if err != nil {
+		return model.Term{}, err
+	}
+	return term, nil
 }
 
 func (s *AttendanceService) AvailableCourseGroupLessons(weekday, weekNo int) ([]query.SessionWithCourse, error) {

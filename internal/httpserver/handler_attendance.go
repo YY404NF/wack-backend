@@ -21,6 +21,15 @@ func (h *apiHandler) adminAttendanceDashboard(c *gin.Context) {
 	ok(c, result)
 }
 
+func (h *apiHandler) adminOverview(c *gin.Context) {
+	result, err := h.attendance.AdminOverview()
+	if err != nil {
+		fail(c, 500, "load admin overview failed")
+		return
+	}
+	ok(c, result)
+}
+
 func (h *apiHandler) adminAttendanceResults(c *gin.Context) {
 	page, pageSize := parsePage(c)
 	items, total, err := h.attendance.AttendanceResults(c.Query("week_no"), c.Query("course_id"), c.Query("status"), page, pageSize)

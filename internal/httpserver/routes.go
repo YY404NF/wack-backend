@@ -101,6 +101,7 @@ func mountSystemSettingRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 }
 
 func mountAttendanceRoutes(admin, student *gin.RouterGroup, apiHandler *apiHandler) {
+	admin.GET("/overview", apiHandler.adminOverview)
 	admin.GET("/attendance-dashboard", apiHandler.adminAttendanceDashboard)
 	admin.GET("/attendance-results", apiHandler.adminAttendanceResults)
 	admin.GET("/free-time-calendar", apiHandler.adminFreeTimeCalendar)
