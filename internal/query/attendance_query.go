@@ -69,6 +69,7 @@ type OverviewRecentAbnormalItem struct {
 	ClassName          string `json:"class_name"`
 	CourseName         string `json:"course_name"`
 	TeacherName        string `json:"teacher_name"`
+	Grade              int    `json:"grade"`
 	Status             int    `json:"status"`
 	WeekNo             int    `json:"week_no"`
 	Weekday            int    `json:"weekday"`
@@ -360,6 +361,7 @@ func (q *AttendanceQuery) OverviewRecentAbnormalStudents(termName string) ([]Ove
 			COALESCE(class.class_name, '其他学生') AS class_name,
 			course.course_name,
 			course.teacher_name,
+			course.grade,
 			attendance_record.attendance_status AS status,
 			course_group_lesson.week_no,
 			course_group_lesson.weekday,

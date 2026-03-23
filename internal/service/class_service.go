@@ -126,10 +126,27 @@ func (s *ClassService) CreateClassStudent(classID uint64, student model.Student)
 	if err := ensureClassExists(s.db, classID); err != nil {
 		return query.ClassStudentItem{}, err
 	}
-	if err := s.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "student_no"}},
-		DoUpdates: clause.AssignmentColumns([]string{"student_name", "class_id", "status", "updated_at"}),
-	}).Create(&student).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		var existing model.Student
+		oldClassID := (*uint64)(nil)
+		err := tx.Where("student_no = ?", student.StudentNo).First(&existing).Error
+		switch {
+		case err == nil:
+			oldClassID = existing.ClassID
+		case err != nil && err != gorm.ErrRecordNotFound:
+			return err
+		}
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "student_no"}},
+			DoUpdates: clause.AssignmentColumns([]string{"student_name", "class_id", "status", "updated_at"}),
+		}).Create(&student).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("student_no = ?", student.StudentNo).First(&student).Error; err != nil {
+			return err
+		}
+		return syncStudentClassMembership(tx, student.ID, oldClassID, student.ClassID)
+	}); err != nil {
 		return query.ClassStudentItem{}, err
 	}
 	students, err := s.classes.ClassStudents(classID)
@@ -175,19 +192,21 @@ func (s *ClassService) UpdateClassStudent(classID, studentID uint64, input model
 }
 
 func (s *ClassService) DeleteClassStudent(classID, studentID uint64) error {
-	result := s.db.Model(&model.Student{}).
-		Where("id = ? AND class_id = ?", studentID, classID).
-		Updates(map[string]interface{}{
-			"class_id":   nil,
-			"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
-		})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrClassNotFound
-	}
-	return nil
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.Student{}).
+			Where("id = ? AND class_id = ?", studentID, classID).
+			Updates(map[string]interface{}{
+				"class_id":   nil,
+				"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrClassNotFound
+		}
+		return syncStudentClassMembership(tx, studentID, uint64Ptr(classID), nil)
+	})
 }
 
 func (s *ClassService) ImportClassStudents(classID uint64, students []model.Student) (int, error) {
@@ -211,10 +230,37 @@ func (s *ClassService) ImportClassStudents(classID uint64, students []model.Stud
 	}
 
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		return tx.Clauses(clause.OnConflict{
+		oldClassByStudentNo := make(map[string]*uint64, len(normalized))
+		studentNos := make([]string, 0, len(normalized))
+		for _, student := range normalized {
+			studentNos = append(studentNos, student.StudentNo)
+		}
+
+		var existingStudents []model.Student
+		if err := tx.Where("student_no IN ?", studentNos).Find(&existingStudents).Error; err != nil {
+			return err
+		}
+		for _, existing := range existingStudents {
+			oldClassByStudentNo[existing.StudentNo] = existing.ClassID
+		}
+
+		if err := tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "student_no"}},
 			DoUpdates: clause.AssignmentColumns([]string{"student_name", "class_id", "status", "updated_at"}),
-		}).Create(&normalized).Error
+		}).Create(&normalized).Error; err != nil {
+			return err
+		}
+
+		var savedStudents []model.Student
+		if err := tx.Where("student_no IN ?", studentNos).Find(&savedStudents).Error; err != nil {
+			return err
+		}
+		for _, saved := range savedStudents {
+			if err := syncStudentClassMembership(tx, saved.ID, oldClassByStudentNo[saved.StudentNo], saved.ClassID); err != nil {
+				return err
+			}
+		}
+		return nil
 	}); err != nil {
 		return 0, err
 	}

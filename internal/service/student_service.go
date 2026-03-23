@@ -61,7 +61,12 @@ func (s *StudentService) CreateStudent(student model.Student) (query.StudentItem
 			return query.StudentItem{}, err
 		}
 	}
-	if err := s.db.Create(&student).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&student).Error; err != nil {
+			return err
+		}
+		return syncStudentClassMembership(tx, student.ID, nil, student.ClassID)
+	}); err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return query.StudentItem{}, ErrStudentNoAlreadyExists
 		}
@@ -87,25 +92,61 @@ func (s *StudentService) UpdateStudent(id uint64, input model.Student) (query.St
 	if err := s.db.First(&student, "id = ? AND status = 1", id).Error; err != nil {
 		return query.StudentItem{}, ErrStudentNotFound
 	}
-	if err := s.db.Model(&student).Updates(map[string]interface{}{
-		"student_no":   input.StudentNo,
-		"student_name": input.StudentName,
-		"class_id":     input.ClassID,
-	}).Error; err != nil {
+	oldClassID := student.ClassID
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&student).Updates(map[string]interface{}{
+			"student_no":   input.StudentNo,
+			"student_name": input.StudentName,
+			"class_id":     input.ClassID,
+		}).Error; err != nil {
+			return err
+		}
+		return syncStudentClassMembership(tx, student.ID, oldClassID, input.ClassID)
+	}); err != nil {
 		return query.StudentItem{}, err
 	}
 	return s.students.GetStudent(id)
 }
 
 func (s *StudentService) DeleteStudent(id uint64) error {
-	result := s.db.Where("id = ? AND status = 1", id).Delete(&model.Student{})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrStudentNotFound
-	}
-	return nil
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var student model.Student
+		if err := tx.Where("id = ? AND status = 1", id).First(&student).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return ErrStudentNotFound
+			}
+			return err
+		}
+
+		var recordCount int64
+		if err := tx.Model(&model.AttendanceRecord{}).
+			Where("student_id = ?", id).
+			Count(&recordCount).Error; err != nil {
+			return err
+		}
+
+		if recordCount > 0 {
+			if err := tx.Model(&model.CourseGroupStudent{}).
+				Where("student_id = ? AND status = 1", id).
+				Updates(map[string]interface{}{
+					"status":     2,
+					"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+				}).Error; err != nil {
+				return err
+			}
+			return tx.Model(&model.Student{}).
+				Where("id = ? AND status = 1", id).
+				Updates(map[string]interface{}{
+					"status":     2,
+					"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+				}).Error
+		}
+
+		if err := tx.Where("student_id = ?", id).Delete(&model.CourseGroupStudent{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.Student{}, id).Error
+	})
 }
 
 func (s *StudentService) ListStudentOptions(keyword string, onlyUnbound bool) ([]query.StudentOptionItem, error) {
