@@ -145,6 +145,7 @@ type AvailableCourseItem struct {
 	BuildingName        string `json:"building_name"`
 	RoomName            string `json:"room_name"`
 	CanEnter            bool   `json:"can_enter"`
+	AvailabilityStatus  string `json:"availability_status"`
 	EnterDeadline       string `json:"enter_deadline"`
 }
 

@@ -105,12 +105,16 @@ func (h *apiHandler) studentAvailableCourses(c *gin.Context) {
 			RoomName:      session.RoomName,
 		}
 		canEnter := h.withinDeadline(lesson, now)
-		if user.Role != model.RoleCommissioner && !canEnter {
-			continue
-		}
-		deadline, err := h.attendanceDeadline(lesson, now)
+		windowStart, deadline, err := h.attendanceWindow(lesson, now)
 		if err != nil {
 			continue
+		}
+		availabilityStatus := "ended"
+		switch {
+		case canEnter:
+			availabilityStatus = "open"
+		case now.Before(windowStart):
+			availabilityStatus = "upcoming"
 		}
 		items = append(items, query.AvailableCourseItem{
 			CourseGroupLessonID: session.ID,
@@ -123,6 +127,7 @@ func (h *apiHandler) studentAvailableCourses(c *gin.Context) {
 			BuildingName:        session.BuildingName,
 			RoomName:            session.RoomName,
 			CanEnter:            canEnter,
+			AvailabilityStatus:  availabilityStatus,
 			EnterDeadline:       deadline.Format("2006-01-02 15:04:05"),
 		})
 	}
