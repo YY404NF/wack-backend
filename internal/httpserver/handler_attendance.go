@@ -84,9 +84,9 @@ func (h *apiHandler) studentAvailableCourses(c *gin.Context) {
 			ok(c, []query.AvailableCourseItem{})
 			return
 		}
-		sessions, err = h.attendance.AvailableCourseGroupLessonsForClass(weekday, currentWeek, *user.ManagedClassID)
+		sessions, err = h.attendance.AvailableCourseGroupLessonsForClass(setting.ID, weekday, currentWeek, *user.ManagedClassID)
 	} else {
-		sessions, err = h.attendance.AvailableCourseGroupLessons(weekday, currentWeek)
+		sessions, err = h.attendance.AvailableCourseGroupLessons(setting.ID, weekday, currentWeek)
 	}
 	if err != nil {
 		fail(c, 500, "load available courses failed")
@@ -97,6 +97,7 @@ func (h *apiHandler) studentAvailableCourses(c *gin.Context) {
 	for _, session := range sessions {
 		lesson := model.CourseGroupLesson{
 			ID:            session.ID,
+			TermID:        session.TermID,
 			CourseGroupID: 0,
 			WeekNo:        session.WeekNo,
 			Weekday:       session.Weekday,

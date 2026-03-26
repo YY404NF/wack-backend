@@ -140,3 +140,57 @@ func TestAbandonAttendanceSessionDoesNotDeleteSubmittedResults(t *testing.T) {
 		t.Fatalf("expected submitted attendance record to remain, got %d", recordCount)
 	}
 }
+
+func TestAvailableCourseGroupLessonsOnlyReturnsCurrentTermSessions(t *testing.T) {
+	service, lesson, _, _ := setupAttendanceServiceTest(t)
+
+	currentSessions, err := service.AvailableCourseGroupLessons(lesson.TermID, lesson.Weekday, lesson.WeekNo)
+	if err != nil {
+		t.Fatalf("load current term sessions: %v", err)
+	}
+	if len(currentSessions) != 1 || currentSessions[0].ID != lesson.ID {
+		t.Fatalf("unexpected current term sessions: %+v", currentSessions)
+	}
+
+	otherTerm := model.Term{Name: "2025-2026-1", TermStartDate: "2025-09-01"}
+	if err := service.db.Create(&otherTerm).Error; err != nil {
+		t.Fatalf("create other term: %v", err)
+	}
+	otherCourse := model.Course{TermID: otherTerm.ID, Grade: 2025, CourseName: "其他学期课程", TeacherName: "教师", Status: 1}
+	if err := service.db.Create(&otherCourse).Error; err != nil {
+		t.Fatalf("create other course: %v", err)
+	}
+	otherGroup := model.CourseGroup{TermID: otherTerm.ID, CourseID: otherCourse.ID, Status: 1}
+	if err := service.db.Create(&otherGroup).Error; err != nil {
+		t.Fatalf("create other group: %v", err)
+	}
+	otherLesson := model.CourseGroupLesson{
+		TermID:        otherTerm.ID,
+		CourseGroupID: otherGroup.ID,
+		WeekNo:        lesson.WeekNo,
+		Weekday:       lesson.Weekday,
+		Section:       lesson.Section,
+		BuildingName:  "教3",
+		RoomName:      "301",
+		Status:        1,
+	}
+	if err := service.db.Create(&otherLesson).Error; err != nil {
+		t.Fatalf("create other lesson: %v", err)
+	}
+
+	currentSessions, err = service.AvailableCourseGroupLessons(lesson.TermID, lesson.Weekday, lesson.WeekNo)
+	if err != nil {
+		t.Fatalf("reload current term sessions: %v", err)
+	}
+	if len(currentSessions) != 1 || currentSessions[0].ID != lesson.ID {
+		t.Fatalf("expected only current term lesson, got %+v", currentSessions)
+	}
+
+	otherSessions, err := service.AvailableCourseGroupLessons(otherTerm.ID, lesson.Weekday, lesson.WeekNo)
+	if err != nil {
+		t.Fatalf("load other term sessions: %v", err)
+	}
+	if len(otherSessions) != 1 || otherSessions[0].ID != otherLesson.ID {
+		t.Fatalf("expected only other term lesson, got %+v", otherSessions)
+	}
+}

@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -11,6 +12,8 @@ import (
 	"wack-backend/internal/httpserver"
 	"wack-backend/internal/service"
 )
+
+const schoolTimeZone = "Asia/Shanghai"
 
 type App struct {
 	cfg    config.Config
@@ -25,6 +28,11 @@ type closer interface {
 
 func New() (*App, error) {
 	cfg := config.Load()
+	location, err := time.LoadLocation(schoolTimeZone)
+	if err != nil {
+		return nil, fmt.Errorf("load timezone %q: %w", schoolTimeZone, err)
+	}
+	time.Local = location
 
 	db, err := database.OpenAndMigrate(cfg.DatabasePath)
 	if err != nil {

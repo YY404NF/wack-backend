@@ -114,12 +114,12 @@ func (s *AttendanceService) resolveActiveTerm(now time.Time) (model.Term, error)
 	return term, nil
 }
 
-func (s *AttendanceService) AvailableCourseGroupLessons(weekday, weekNo int) ([]query.SessionWithCourse, error) {
-	return s.attendance.AvailableCourseGroupLessons(weekday, weekNo)
+func (s *AttendanceService) AvailableCourseGroupLessons(termID uint64, weekday, weekNo int) ([]query.SessionWithCourse, error) {
+	return s.attendance.AvailableCourseGroupLessons(termID, weekday, weekNo)
 }
 
-func (s *AttendanceService) AvailableCourseGroupLessonsForClass(weekday, weekNo int, classID uint64) ([]query.SessionWithCourse, error) {
-	return s.attendance.AvailableCourseGroupLessonsForClass(weekday, weekNo, classID)
+func (s *AttendanceService) AvailableCourseGroupLessonsForClass(termID uint64, weekday, weekNo int, classID uint64) ([]query.SessionWithCourse, error) {
+	return s.attendance.AvailableCourseGroupLessonsForClass(termID, weekday, weekNo, classID)
 }
 
 func (s *AttendanceService) AttendanceRecords(sessionID uint64) ([]query.AttendanceRecordItem, error) {

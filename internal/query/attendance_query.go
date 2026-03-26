@@ -150,6 +150,7 @@ type AvailableCourseItem struct {
 }
 
 type SessionWithCourse struct {
+	TermID       uint64 `json:"term_id"`
 	ID           uint64 `json:"id"`
 	CourseID     uint64 `json:"course_id"`
 	SessionNo    int    `json:"session_no"`
@@ -478,10 +479,11 @@ func (q *AttendanceQuery) AttendanceSessionSummaries(keyword, weekNo, status str
 	return items, total, err
 }
 
-func (q *AttendanceQuery) AvailableCourseGroupLessons(weekday, weekNo int) ([]SessionWithCourse, error) {
+func (q *AttendanceQuery) AvailableCourseGroupLessons(termID uint64, weekday, weekNo int) ([]SessionWithCourse, error) {
 	var sessions []SessionWithCourse
 	err := q.db.Table("course_group_lesson").
 		Select(`
+			course_group_lesson.term_id,
 			course_group_lesson.id,
 			course_group.course_id,
 			ROW_NUMBER() OVER (
@@ -498,16 +500,17 @@ func (q *AttendanceQuery) AvailableCourseGroupLessons(weekday, weekNo int) ([]Se
 		`).
 		Joins("JOIN course_group ON course_group.id = course_group_lesson.course_group_id").
 		Joins("JOIN course ON course.id = course_group.course_id").
-		Where("course_group_lesson.weekday = ? AND course_group_lesson.week_no = ? AND course_group_lesson.status = 1 AND course_group.status = 1", weekday, weekNo).
+		Where("course_group_lesson.term_id = ? AND course_group_lesson.weekday = ? AND course_group_lesson.week_no = ? AND course_group_lesson.status = 1 AND course_group.status = 1", termID, weekday, weekNo).
 		Order("course_group_lesson.section ASC, course_group_lesson.id ASC").
 		Scan(&sessions).Error
 	return sessions, err
 }
 
-func (q *AttendanceQuery) AvailableCourseGroupLessonsForClass(weekday, weekNo int, classID uint64) ([]SessionWithCourse, error) {
+func (q *AttendanceQuery) AvailableCourseGroupLessonsForClass(termID uint64, weekday, weekNo int, classID uint64) ([]SessionWithCourse, error) {
 	var sessions []SessionWithCourse
 	err := q.db.Table("course_group_lesson").
 		Select(`
+			course_group_lesson.term_id,
 			course_group_lesson.id,
 			course_group.course_id,
 			ROW_NUMBER() OVER (
@@ -524,7 +527,7 @@ func (q *AttendanceQuery) AvailableCourseGroupLessonsForClass(weekday, weekNo in
 		`).
 		Joins("JOIN course_group ON course_group.id = course_group_lesson.course_group_id").
 		Joins("JOIN course ON course.id = course_group.course_id").
-		Where("course_group_lesson.weekday = ? AND course_group_lesson.week_no = ? AND course_group_lesson.status = 1 AND course_group.status = 1", weekday, weekNo).
+		Where("course_group_lesson.term_id = ? AND course_group_lesson.weekday = ? AND course_group_lesson.week_no = ? AND course_group_lesson.status = 1 AND course_group.status = 1", termID, weekday, weekNo).
 		Where(`
 			EXISTS (
 				SELECT 1

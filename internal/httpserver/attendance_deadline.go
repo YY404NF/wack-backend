@@ -20,11 +20,25 @@ func attendanceSessionDate(startDate string, lesson model.CourseGroupLesson, loc
 }
 
 func (h *apiHandler) attendanceWindow(lesson model.CourseGroupLesson, now time.Time) (time.Time, time.Time, error) {
-	setting, err := h.systemSettings.GetSystemSetting()
+	startDate := ""
+	if lesson.TermID != 0 {
+		term, err := h.meta.GetTerm(lesson.TermID)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		startDate = term.TermStartDate
+	} else {
+		setting, err := h.systemSettings.GetSystemSetting()
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		startDate = setting.CurrentTermStartDate
+	}
+	sessionDate, err := attendanceSessionDate(startDate, lesson, now.Location())
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
-	sessionDate, err := attendanceSessionDate(setting.CurrentTermStartDate, lesson, now.Location())
+	setting, err := h.systemSettings.GetSystemSetting()
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
