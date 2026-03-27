@@ -23,13 +23,15 @@ func (h *apiHandler) adminAttendanceRecordLogs(c *gin.Context) {
 func (h *apiHandler) listAttendanceRecordLogs(c *gin.Context) {
 	page, pageSize := parsePage(c)
 	logs, total, err := h.logs.AttendanceRecordLogs(query.AttendanceRecordLogListInput{
-		StudentID:       c.Query("student_id"),
-		OperatorLoginID: c.Query("operator_login_id"),
-		OperationType:   c.Query("operation_type"),
-		NewStatus:       c.Query("new_status"),
-		OperatedDate:    c.Query("operated_date"),
-		Page:            page,
-		PageSize:        pageSize,
+		Term:                c.Query("term"),
+		CourseGroupLessonID: c.Query("course_group_lesson_id"),
+		StudentID:           c.Query("student_id"),
+		OperatorLoginID:     c.Query("operator_login_id"),
+		OperationType:       c.Query("operation_type"),
+		NewStatus:           c.Query("new_status"),
+		OperatedDate:        c.Query("operated_date"),
+		Page:                page,
+		PageSize:            pageSize,
 	})
 	if err != nil {
 		fail(c, 500, "list attendance record logs failed")

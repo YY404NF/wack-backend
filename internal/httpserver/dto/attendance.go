@@ -5,12 +5,12 @@ type EnterAttendanceSessionRequest struct {
 }
 
 type UpdateAttendanceStatusRequest struct {
-	Status int `json:"status" binding:"required"`
+	Status *int `json:"status"`
 }
 
 type SubmitAttendanceStatusItem struct {
 	StudentRefID uint64 `json:"student_ref_id" binding:"required"`
-	Status       int    `json:"status" binding:"required"`
+	Status       *int   `json:"status"`
 }
 
 type SubmitAttendanceStatusesRequest struct {

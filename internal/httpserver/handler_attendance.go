@@ -42,7 +42,19 @@ func (h *apiHandler) adminAttendanceResults(c *gin.Context) {
 
 func (h *apiHandler) adminAttendanceSessions(c *gin.Context) {
 	page, pageSize := parsePage(c)
-	items, total, err := h.attendance.AttendanceSessionSummaries(c.Query("keyword"), c.Query("week_no"), c.Query("status"), page, pageSize)
+	includeUnchecked := c.Query("include_unchecked") == "1" || c.Query("include_unchecked") == "true"
+	items, total, err := h.attendance.AttendanceSessionSummaries(
+		c.Query("term"),
+		c.Query("keyword"),
+		c.Query("week_no"),
+		c.Query("weekday"),
+		c.Query("section"),
+		c.Query("class_id"),
+		c.Query("status"),
+		includeUnchecked,
+		page,
+		pageSize,
+	)
 	if err != nil {
 		fail(c, 500, "load attendance sessions failed")
 		return
@@ -229,7 +241,11 @@ func (h *apiHandler) studentUpdateAttendanceStatus(c *gin.Context) {
 		fail(c, 400, "invalid request")
 		return
 	}
-	if req.Status < model.AttendancePresent || req.Status > model.AttendanceOnLeave {
+	if req.Status == nil {
+		fail(c, 400, "invalid request")
+		return
+	}
+	if *req.Status < model.AttendancePresent || *req.Status > model.AttendanceOnLeave {
 		fail(c, 400, "invalid status")
 		return
 	}
@@ -249,7 +265,7 @@ func (h *apiHandler) studentUpdateAttendanceStatus(c *gin.Context) {
 		return
 	}
 
-	if err := h.attendance.UpdateAttendanceStatus(id, req.Status, user.ID, false); err != nil {
+	if err := h.attendance.UpdateAttendanceStatus(id, *req.Status, user.ID, false); err != nil {
 		switch {
 		case service.IsServiceError(err, service.ErrAttendanceRecordNotFound):
 			fail(c, 404, "attendance record not found")
@@ -279,13 +295,17 @@ func (h *apiHandler) studentSubmitAttendanceStatuses(c *gin.Context) {
 
 	items := make([]service.AttendanceStatusInput, 0, len(req.Items))
 	for _, item := range req.Items {
-		if item.Status < model.AttendancePresent || item.Status > model.AttendanceOnLeave {
+		if item.Status == nil {
+			fail(c, 400, "invalid request")
+			return
+		}
+		if *item.Status < model.AttendancePresent || *item.Status > model.AttendanceOnLeave {
 			fail(c, 400, "invalid status")
 			return
 		}
 		items = append(items, service.AttendanceStatusInput{
 			StudentRefID: item.StudentRefID,
-			Status:       item.Status,
+			Status:       *item.Status,
 		})
 	}
 
@@ -361,7 +381,15 @@ func (h *apiHandler) adminGetAttendanceSession(c *gin.Context) {
 		return
 	}
 	page, pageSize := parsePage(c)
-	session, course, records, total, err := h.attendance.GetAttendanceSessionPage(id, c.Query("keyword"), c.Query("status"), page, pageSize)
+	session, course, records, total, err := h.attendance.GetAttendanceSessionPage(
+		id,
+		c.Query("student_id"),
+		c.Query("real_name"),
+		c.Query("class_name"),
+		c.Query("status"),
+		page,
+		pageSize,
+	)
 	if err != nil {
 		switch {
 		case service.IsServiceError(err, service.ErrCourseGroupLessonNotFound):
@@ -398,11 +426,15 @@ func (h *apiHandler) adminUpsertAttendanceStatus(c *gin.Context) {
 		fail(c, 400, "invalid request")
 		return
 	}
-	if req.Status < model.AttendancePresent || req.Status > model.AttendanceOnLeave {
+	if req.Status == nil {
+		fail(c, 400, "invalid request")
+		return
+	}
+	if *req.Status < model.AttendancePresent || *req.Status > model.AttendanceOnLeave {
 		fail(c, 400, "invalid status")
 		return
 	}
-	if err := h.attendance.UpsertAttendanceStatusForStudent(sessionID, studentID, req.Status, user.ID, true); err != nil {
+	if err := h.attendance.UpsertAttendanceStatusForStudent(sessionID, studentID, *req.Status, user.ID, true); err != nil {
 		fail(c, 500, "update attendance status failed")
 		return
 	}
@@ -421,11 +453,15 @@ func (h *apiHandler) adminUpdateAttendanceStatus(c *gin.Context) {
 		fail(c, 400, "invalid request")
 		return
 	}
-	if req.Status < model.AttendancePresent || req.Status > model.AttendanceOnLeave {
+	if req.Status == nil {
+		fail(c, 400, "invalid request")
+		return
+	}
+	if *req.Status < model.AttendancePresent || *req.Status > model.AttendanceOnLeave {
 		fail(c, 400, "invalid status")
 		return
 	}
-	if err := h.attendance.UpdateAttendanceStatus(id, req.Status, user.ID, true); err != nil {
+	if err := h.attendance.UpdateAttendanceStatus(id, *req.Status, user.ID, true); err != nil {
 		fail(c, 500, "update attendance status failed")
 		return
 	}

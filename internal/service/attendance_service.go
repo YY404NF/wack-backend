@@ -87,8 +87,8 @@ func (s *AttendanceService) AttendanceResults(weekNo, courseID, status string, p
 	return s.attendance.AttendanceResults(weekNo, courseID, status, page, pageSize)
 }
 
-func (s *AttendanceService) AttendanceSessionSummaries(keyword, weekNo, status string, page, pageSize int) ([]query.AttendanceSessionSummaryItem, int64, error) {
-	return s.attendance.AttendanceSessionSummaries(keyword, weekNo, status, page, pageSize)
+func (s *AttendanceService) AttendanceSessionSummaries(term, keyword, weekNo, weekday, section, classID, status string, includeUnchecked bool, page, pageSize int) ([]query.AttendanceSessionSummaryItem, int64, error) {
+	return s.attendance.AttendanceSessionSummaries(term, keyword, weekNo, weekday, section, classID, status, includeUnchecked, page, pageSize)
 }
 
 func (s *AttendanceService) resolveActiveTerm(now time.Time) (model.Term, error) {
@@ -293,7 +293,7 @@ func (s *AttendanceService) GetAttendanceSession(sessionID uint64) (model.Course
 	return s.GetAttendanceSessionForClass(sessionID, nil)
 }
 
-func (s *AttendanceService) GetAttendanceSessionPage(sessionID uint64, keyword, status string, page, pageSize int) (model.CourseGroupLesson, model.Course, []query.AttendanceRecordItem, int64, error) {
+func (s *AttendanceService) GetAttendanceSessionPage(sessionID uint64, studentID, realName, className, status string, page, pageSize int) (model.CourseGroupLesson, model.Course, []query.AttendanceRecordItem, int64, error) {
 	var lesson model.CourseGroupLesson
 	if err := s.db.First(&lesson, sessionID).Error; err != nil {
 		return model.CourseGroupLesson{}, model.Course{}, nil, 0, ErrCourseGroupLessonNotFound
@@ -309,7 +309,7 @@ func (s *AttendanceService) GetAttendanceSessionPage(sessionID uint64, keyword, 
 		return model.CourseGroupLesson{}, model.Course{}, nil, 0, ErrCourseNotFound
 	}
 
-	records, total, err := s.attendance.AttendanceSessionRecordPage(lesson.ID, keyword, status, page, pageSize)
+	records, total, err := s.attendance.AttendanceSessionRecordPage(lesson.ID, studentID, realName, className, status, page, pageSize)
 	if err != nil {
 		return model.CourseGroupLesson{}, model.Course{}, nil, 0, err
 	}

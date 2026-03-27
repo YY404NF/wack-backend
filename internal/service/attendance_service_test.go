@@ -38,6 +38,17 @@ func setupAttendanceServiceTest(t *testing.T) (*AttendanceService, *model.Course
 		t.Fatalf("create class: %v", err)
 	}
 
+	operators := []model.User{
+		{ID: 99, LoginID: "99", PasswordHash: "hash", RealName: "操作人99", Role: model.RoleAdmin, Status: model.UserStatusActive},
+		{ID: 100, LoginID: "100", PasswordHash: "hash", RealName: "操作人100", Role: model.RoleAdmin, Status: model.UserStatusActive},
+		{ID: 101, LoginID: "101", PasswordHash: "hash", RealName: "操作人101", Role: model.RoleAdmin, Status: model.UserStatusActive},
+	}
+	for _, user := range operators {
+		if err := db.Create(&user).Error; err != nil {
+			t.Fatalf("create operator user: %v", err)
+		}
+	}
+
 	student1 := model.Student{StudentNo: "20250001", StudentName: "甲", ClassID: &class.ID, Status: 1}
 	student2 := model.Student{StudentNo: "20250002", StudentName: "乙", ClassID: &class.ID, Status: 1}
 	if err := db.Create(&student1).Error; err != nil {
@@ -138,6 +149,83 @@ func TestAbandonAttendanceSessionDoesNotDeleteSubmittedResults(t *testing.T) {
 	}
 	if recordCount != 1 {
 		t.Fatalf("expected submitted attendance record to remain, got %d", recordCount)
+	}
+}
+
+func TestAdminUpdateAttendanceStatusWritesAttendanceLog(t *testing.T) {
+	service, lesson, relation1, _ := setupAttendanceServiceTest(t)
+
+	if err := service.UpsertAttendanceStatusForStudent(lesson.ID, relation1.StudentID, model.AttendanceLate, 99, true); err != nil {
+		t.Fatalf("seed attendance record: %v", err)
+	}
+
+	records, err := service.AttendanceRecords(lesson.ID)
+	if err != nil {
+		t.Fatalf("load records: %v", err)
+	}
+
+	var recordID uint64
+	for _, record := range records {
+		if record.StudentID == "20250001" && record.AttendanceRecordID != nil {
+			recordID = *record.AttendanceRecordID
+			break
+		}
+	}
+	if recordID == 0 {
+		t.Fatalf("attendance record not found after seed")
+	}
+
+	if err := service.UpdateAttendanceStatus(recordID, model.AttendancePresent, 100, true); err != nil {
+		t.Fatalf("update attendance status: %v", err)
+	}
+
+	logs, err := service.AttendanceRecordLogs(recordID)
+	if err != nil {
+		t.Fatalf("load attendance logs: %v", err)
+	}
+	if len(logs) != 2 {
+		t.Fatalf("expected 2 logs, got %d", len(logs))
+	}
+	if logs[0].OperationType != "set_status" || logs[0].OldStatus == nil || *logs[0].OldStatus != model.AttendanceLate || logs[0].NewStatus != model.AttendancePresent {
+		t.Fatalf("unexpected update log: %+v", logs[0])
+	}
+}
+
+func TestAdminUpsertMissingAttendanceStatusCreatesRecordAndLog(t *testing.T) {
+	service, lesson, _, relation2 := setupAttendanceServiceTest(t)
+
+	if err := service.UpsertAttendanceStatusForStudent(lesson.ID, relation2.StudentID, model.AttendanceAbsent, 101, true); err != nil {
+		t.Fatalf("create missing attendance record: %v", err)
+	}
+
+	records, err := service.AttendanceRecords(lesson.ID)
+	if err != nil {
+		t.Fatalf("load records: %v", err)
+	}
+
+	var recordID uint64
+	for _, record := range records {
+		if record.StudentID == "20250002" && record.AttendanceRecordID != nil {
+			recordID = *record.AttendanceRecordID
+			if record.Status == nil || *record.Status != model.AttendanceAbsent {
+				t.Fatalf("unexpected created status: %+v", record)
+			}
+			break
+		}
+	}
+	if recordID == 0 {
+		t.Fatalf("created attendance record not found")
+	}
+
+	logs, err := service.AttendanceRecordLogs(recordID)
+	if err != nil {
+		t.Fatalf("load attendance logs: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected 1 log, got %d", len(logs))
+	}
+	if logs[0].OperationType != "create_record" || logs[0].OldStatus == nil || *logs[0].OldStatus != model.AttendanceAbsent || logs[0].NewStatus != model.AttendanceAbsent {
+		t.Fatalf("unexpected create log: %+v", logs[0])
 	}
 }
 

@@ -103,12 +103,20 @@ type AttendanceResultItem struct {
 
 type AttendanceSessionSummaryItem struct {
 	CourseGroupLessonID uint64 `json:"course_group_lesson_id"`
+	TermID              uint64 `json:"term_id"`
+	Term                string `json:"term"`
 	CourseID            uint64 `json:"course_id"`
 	CourseName          string `json:"course_name"`
 	TeacherName         string `json:"teacher_name"`
 	WeekNo              int    `json:"week_no"`
+	Weekday             int    `json:"weekday"`
+	Section             int    `json:"section"`
+	BuildingName        string `json:"building_name"`
+	RoomName            string `json:"room_name"`
+	ClassSummary        string `json:"class_summary"`
 	SessionNo           int    `json:"session_no"`
 	StudentCount        int64  `json:"student_count"`
+	RecordCount         int64  `json:"record_count"`
 	PresentCount        int64  `json:"present_count"`
 	LateCount           int64  `json:"late_count"`
 	AbsentCount         int64  `json:"absent_count"`
@@ -431,37 +439,113 @@ func (q *AttendanceQuery) AttendanceResults(weekNo, courseID, status string, pag
 	return items, total, nil
 }
 
-func (q *AttendanceQuery) AttendanceSessionSummaries(keyword, weekNo, status string, page, pageSize int) ([]AttendanceSessionSummaryItem, int64, error) {
-	base := q.db.Table("attendance_record").
+func (q *AttendanceQuery) AttendanceSessionSummaries(term, keyword, weekNo, weekday, section, classID, status string, includeUnchecked bool, page, pageSize int) ([]AttendanceSessionSummaryItem, int64, error) {
+	base := q.db.Table("course_group_lesson").
 		Select(`
 			course_group_lesson.id AS course_group_lesson_id,
+			term.id AS term_id,
+			term.name AS term,
 			course.id AS course_id,
 			course.course_name,
 			course.teacher_name,
 			course_group_lesson.week_no,
+			course_group_lesson.weekday,
+			course_group_lesson.section,
+			course_group_lesson.building_name,
+			course_group_lesson.room_name,
+			COALESCE((
+				SELECT GROUP_CONCAT(DISTINCT COALESCE(class.class_name, '其他学生'))
+				FROM course_group_student AS cgs
+				LEFT JOIN class ON class.id = cgs.class_id
+				JOIN student ON student.id = cgs.student_id AND student.status = 1
+				WHERE cgs.course_group_id = course_group_lesson.course_group_id
+				  AND cgs.status = 1
+			), '') AS class_summary,
 			ROW_NUMBER() OVER (
 				PARTITION BY course.id
 				ORDER BY course_group_lesson.week_no, course_group_lesson.weekday, course_group_lesson.section, course_group_lesson.id
 			) AS session_no,
-			COUNT(attendance_record.id) AS student_count,
-			SUM(CASE WHEN attendance_record.attendance_status = 0 THEN 1 ELSE 0 END) AS present_count,
-			SUM(CASE WHEN attendance_record.attendance_status = 1 THEN 1 ELSE 0 END) AS late_count,
-			SUM(CASE WHEN attendance_record.attendance_status = 2 THEN 1 ELSE 0 END) AS absent_count,
-			SUM(CASE WHEN attendance_record.attendance_status = 3 THEN 1 ELSE 0 END) AS leave_count
+			(
+				SELECT COUNT(1)
+				FROM course_group_student AS cgs
+				JOIN student ON student.id = cgs.student_id AND student.status = 1
+				WHERE cgs.course_group_id = course_group_lesson.course_group_id
+				  AND cgs.status = 1
+			) AS student_count,
+			(
+				SELECT COUNT(1)
+				FROM attendance_record
+				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
+			) AS record_count,
+			(
+				SELECT COUNT(1)
+				FROM attendance_record
+				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
+				  AND attendance_record.attendance_status = 0
+			) AS present_count,
+			(
+				SELECT COUNT(1)
+				FROM attendance_record
+				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
+				  AND attendance_record.attendance_status = 1
+			) AS late_count,
+			(
+				SELECT COUNT(1)
+				FROM attendance_record
+				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
+				  AND attendance_record.attendance_status = 2
+			) AS absent_count,
+			(
+				SELECT COUNT(1)
+				FROM attendance_record
+				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
+				  AND attendance_record.attendance_status = 3
+			) AS leave_count
 		`).
-		Joins("JOIN course_group_lesson ON course_group_lesson.id = attendance_record.course_group_lesson_id").
 		Joins("JOIN course_group ON course_group.id = course_group_lesson.course_group_id").
-		Joins("JOIN course ON course.id = course_group.course_id")
+		Joins("JOIN course ON course.id = course_group.course_id").
+		Joins("JOIN term ON term.id = course.term_id").
+		Where("course_group_lesson.status = 1 AND course_group.status = 1 AND course.status = 1")
+	if term != "" {
+		base = base.Where("term.name = ?", term)
+	}
 	if weekNo != "" {
 		base = base.Where("course_group_lesson.week_no = ?", weekNo)
+	}
+	if weekday != "" {
+		base = base.Where("course_group_lesson.weekday = ?", weekday)
+	}
+	if section != "" {
+		base = base.Where("course_group_lesson.section = ?", section)
+	}
+	if classID != "" {
+		base = base.Where(`
+			EXISTS (
+				SELECT 1
+				FROM course_group_student
+				JOIN student ON student.id = course_group_student.student_id AND student.status = 1
+				WHERE course_group_student.course_group_id = course_group_lesson.course_group_id
+				  AND course_group_student.class_id = ?
+				  AND course_group_student.status = 1
+			)
+		`, classID)
 	}
 	if keyword != "" {
 		like := "%" + keyword + "%"
 		base = base.Where("course.course_name LIKE ? OR course.teacher_name LIKE ? OR CAST(course_group_lesson.id AS TEXT) LIKE ?", like, like, like)
 	}
-	base = base.Group("course_group_lesson.id, course.id, course.course_name, course.teacher_name, course_group_lesson.week_no, course_group_lesson.weekday, course_group_lesson.section")
+	if !includeUnchecked {
+		base = base.Where("EXISTS (SELECT 1 FROM attendance_record WHERE attendance_record.course_group_lesson_id = course_group_lesson.id)")
+	}
 	if status != "" {
-		base = base.Having("SUM(CASE WHEN attendance_record.attendance_status = ? THEN 1 ELSE 0 END) > 0", status)
+		base = base.Where(`
+			EXISTS (
+				SELECT 1
+				FROM attendance_record
+				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
+				  AND attendance_record.attendance_status = ?
+			)
+		`, status)
 	}
 
 	countQuery := q.db.Table("(?) AS attendance_sessions", base)
@@ -472,7 +556,7 @@ func (q *AttendanceQuery) AttendanceSessionSummaries(keyword, weekNo, status str
 
 	var items []AttendanceSessionSummaryItem
 	err := q.db.Table("(?) AS attendance_sessions", base).
-		Order("week_no DESC, session_no DESC, course_group_lesson_id DESC").
+		Order("term_id DESC, week_no DESC, weekday DESC, section DESC, course_group_lesson_id DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Scan(&items).Error
@@ -543,11 +627,11 @@ func (q *AttendanceQuery) AvailableCourseGroupLessonsForClass(termID uint64, wee
 }
 
 func (q *AttendanceQuery) AttendanceSessionRecords(sessionID uint64) ([]AttendanceRecordItem, error) {
-	items, _, err := q.AttendanceSessionRecordPage(sessionID, "", "", 1, 1000000)
+	items, _, err := q.AttendanceSessionRecordPage(sessionID, "", "", "", "", 1, 1000000)
 	return items, err
 }
 
-func (q *AttendanceQuery) AttendanceSessionRecordPage(sessionID uint64, keyword, status string, page, pageSize int) ([]AttendanceRecordItem, int64, error) {
+func (q *AttendanceQuery) AttendanceSessionRecordPage(sessionID uint64, studentID, realName, className, status string, page, pageSize int) ([]AttendanceRecordItem, int64, error) {
 	var records []AttendanceRecordItem
 	base := q.db.Table("course_group_student").
 		Select(`
@@ -567,9 +651,14 @@ func (q *AttendanceQuery) AttendanceSessionRecordPage(sessionID uint64, keyword,
 		Joins("LEFT JOIN attendance_record ON attendance_record.course_group_lesson_id = course_group_lesson.id AND attendance_record.student_id = course_group_student.student_id").
 		Joins("LEFT JOIN class ON class.id = course_group_student.class_id").
 		Where("course_group_student.status = 1 AND student.status = 1")
-	if keyword != "" {
-		like := "%" + keyword + "%"
-		base = base.Where("student.student_no LIKE ? OR student.student_name LIKE ? OR COALESCE(class.class_name, '') LIKE ?", like, like, like)
+	if studentID != "" {
+		base = base.Where("student.student_no LIKE ?", "%"+studentID+"%")
+	}
+	if realName != "" {
+		base = base.Where("student.student_name LIKE ?", "%"+realName+"%")
+	}
+	if className != "" {
+		base = base.Where("COALESCE(class.class_name, '') LIKE ?", "%"+className+"%")
 	}
 	switch status {
 	case "unrecorded":

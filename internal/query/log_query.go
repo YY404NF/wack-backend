@@ -15,13 +15,15 @@ func NewLogQuery(db *gorm.DB) *LogQuery {
 }
 
 type AttendanceRecordLogListInput struct {
-	StudentID       string
-	OperatorLoginID string
-	OperationType   string
-	NewStatus       string
-	OperatedDate    string
-	Page            int
-	PageSize        int
+	Term                string
+	CourseGroupLessonID string
+	StudentID           string
+	OperatorLoginID     string
+	OperationType       string
+	NewStatus           string
+	OperatedDate        string
+	Page                int
+	PageSize            int
 }
 
 func (q *LogQuery) AttendanceRecordLogs(input AttendanceRecordLogListInput) ([]AttendanceRecordLogItem, int64, error) {
@@ -46,6 +48,12 @@ func (q *LogQuery) AttendanceRecordLogs(input AttendanceRecordLogListInput) ([]A
 		Joins("JOIN attendance_record ON attendance_record.id = attendance_record_log.attendance_record_id").
 		Joins("JOIN student ON student.id = attendance_record.student_id").
 		Joins("JOIN user AS operator_user ON operator_user.id = attendance_record_log.operated_by_user_id")
+	if value := strings.TrimSpace(input.Term); value != "" {
+		query = query.Where("attendance_record.term_id IN (SELECT id FROM term WHERE name = ?)", value)
+	}
+	if value := strings.TrimSpace(input.CourseGroupLessonID); value != "" {
+		query = query.Where("attendance_record.course_group_lesson_id = ?", value)
+	}
 
 	if value := strings.TrimSpace(input.StudentID); value != "" {
 		query = query.Where("student.student_no LIKE ?", "%"+value+"%")
