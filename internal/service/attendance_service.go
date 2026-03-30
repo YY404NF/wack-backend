@@ -166,7 +166,7 @@ func (s *AttendanceService) UpdateAttendanceStatus(detailID uint64, status int, 
 		}).Error; err != nil {
 			return err
 		}
-		return s.audit.logAttendanceStatusChange(tx, record, operatorUserID, oldStatus, status, now)
+		return s.audit.logAttendanceStatusChange(tx, record, operatorUserID, &oldStatus, status, now)
 	})
 }
 
@@ -214,7 +214,7 @@ func (s *AttendanceService) UpsertAttendanceStatusForStudent(sessionID, studentI
 		}).Error; err != nil {
 			return err
 		}
-		return s.audit.logAttendanceStatusChange(tx, record, operatorUserID, oldStatus, status, now)
+		return s.audit.logAttendanceStatusChange(tx, record, operatorUserID, &oldStatus, status, now)
 	})
 }
 

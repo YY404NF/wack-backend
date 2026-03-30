@@ -766,7 +766,7 @@ func (q *AttendanceQuery) AttendanceRecordLogsByID(recordID uint64) ([]Attendanc
 			attendance_record_log.old_attendance_status AS old_status,
 			attendance_record_log.new_attendance_status AS new_status,
 			CASE
-				WHEN attendance_record_log.old_attendance_status = attendance_record_log.new_attendance_status THEN 'create_record'
+				WHEN attendance_record_log.old_attendance_status IS NULL THEN 'create_record'
 				ELSE 'set_status'
 			END AS operation_type,
 			attendance_record_log.created_at AS operated_at,

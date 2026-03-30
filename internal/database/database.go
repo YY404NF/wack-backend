@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -169,9 +170,12 @@ var latestSchemaSQL = []string{
 		term_id INTEGER NOT NULL,
 		attendance_record_id INTEGER NOT NULL,
 		operated_by_user_id INTEGER NOT NULL,
-		old_attendance_status INTEGER NOT NULL,
+		old_attendance_status INTEGER DEFAULT NULL,
 		new_attendance_status INTEGER NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		CONSTRAINT fk_attendance_record_log_term FOREIGN KEY (term_id) REFERENCES term(id),
+		CONSTRAINT fk_attendance_record_log_record FOREIGN KEY (attendance_record_id) REFERENCES attendance_record(id),
+		CONSTRAINT fk_attendance_record_log_user FOREIGN KEY (operated_by_user_id) REFERENCES user(id)
 	);`,
 	`CREATE INDEX IF NOT EXISTS idx_attendance_record_log_term_id ON attendance_record_log(term_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_attendance_record_log_term_attendance_record_id ON attendance_record_log(term_id, attendance_record_id);`,
@@ -207,5 +211,118 @@ func ensureLatestSchema(db *gorm.DB) error {
 			return err
 		}
 	}
+	if err := ensureAttendanceRecordLogOldStatusNullable(db); err != nil {
+		return err
+	}
+	if err := normalizeAttendanceRecordLogCreateRows(db); err != nil {
+		return err
+	}
 	return nil
+}
+
+type sqliteTableColumn struct {
+	Name    string `gorm:"column:name"`
+	NotNull int    `gorm:"column:notnull"`
+}
+
+func ensureAttendanceRecordLogOldStatusNullable(db *gorm.DB) error {
+	var columns []sqliteTableColumn
+	if err := db.Raw("PRAGMA table_info(attendance_record_log)").Scan(&columns).Error; err != nil {
+		return err
+	}
+	for _, column := range columns {
+		if column.Name == "old_attendance_status" && column.NotNull != 0 {
+			return rebuildAttendanceRecordLogTable(db)
+		}
+	}
+	return nil
+}
+
+func rebuildAttendanceRecordLogTable(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return err
+	}
+	defer conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	stmts := []string{
+		`CREATE TABLE attendance_record_log__new (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			term_id INTEGER NOT NULL,
+			attendance_record_id INTEGER NOT NULL,
+			operated_by_user_id INTEGER NOT NULL,
+			old_attendance_status INTEGER DEFAULT NULL,
+			new_attendance_status INTEGER NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			CONSTRAINT fk_attendance_record_log_term FOREIGN KEY (term_id) REFERENCES term(id),
+			CONSTRAINT fk_attendance_record_log_record FOREIGN KEY (attendance_record_id) REFERENCES attendance_record(id),
+			CONSTRAINT fk_attendance_record_log_user FOREIGN KEY (operated_by_user_id) REFERENCES user(id)
+		);`,
+		`INSERT INTO attendance_record_log__new (
+			id,
+			term_id,
+			attendance_record_id,
+			operated_by_user_id,
+			old_attendance_status,
+			new_attendance_status,
+			created_at
+		)
+		SELECT
+			id,
+			term_id,
+			attendance_record_id,
+			operated_by_user_id,
+			CASE
+				WHEN old_attendance_status = new_attendance_status THEN NULL
+				ELSE old_attendance_status
+			END AS old_attendance_status,
+			new_attendance_status,
+			created_at
+		FROM attendance_record_log;`,
+		`DROP TABLE attendance_record_log;`,
+		`ALTER TABLE attendance_record_log__new RENAME TO attendance_record_log;`,
+		`CREATE INDEX IF NOT EXISTS idx_attendance_record_log_term_id ON attendance_record_log(term_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_attendance_record_log_term_attendance_record_id ON attendance_record_log(term_id, attendance_record_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_attendance_record_log_term_operated_by_user_id ON attendance_record_log(term_id, operated_by_user_id);`,
+	}
+	for _, stmt := range stmts {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+func normalizeAttendanceRecordLogCreateRows(db *gorm.DB) error {
+	return db.Exec(`
+		UPDATE attendance_record_log
+		SET old_attendance_status = NULL
+		WHERE old_attendance_status IS NOT NULL
+		  AND old_attendance_status = new_attendance_status
+	`).Error
 }

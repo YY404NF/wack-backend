@@ -224,7 +224,7 @@ func TestAdminUpsertMissingAttendanceStatusCreatesRecordAndLog(t *testing.T) {
 	if len(logs) != 1 {
 		t.Fatalf("expected 1 log, got %d", len(logs))
 	}
-	if logs[0].OperationType != "create_record" || logs[0].OldStatus == nil || *logs[0].OldStatus != model.AttendanceAbsent || logs[0].NewStatus != model.AttendanceAbsent {
+	if logs[0].OperationType != "create_record" || logs[0].OldStatus != nil || logs[0].NewStatus != model.AttendanceAbsent {
 		t.Fatalf("unexpected create log: %+v", logs[0])
 	}
 }

@@ -25,10 +25,16 @@ func (h *apiHandler) listAttendanceRecordLogs(c *gin.Context) {
 	logs, total, err := h.logs.AttendanceRecordLogs(query.AttendanceRecordLogListInput{
 		Term:                c.Query("term"),
 		CourseGroupLessonID: c.Query("course_group_lesson_id"),
+		LessonDate:          c.Query("lesson_date"),
+		Section:             c.Query("section"),
+		CourseName:          c.Query("course_name"),
+		TeacherName:         c.Query("teacher_name"),
 		StudentID:           c.Query("student_id"),
-		OperatorLoginID:     c.Query("operator_login_id"),
-		OperationType:       c.Query("operation_type"),
+		RealName:            c.Query("real_name"),
+		ClassName:           c.Query("class_name"),
+		OldStatus:           c.Query("old_status"),
 		NewStatus:           c.Query("new_status"),
+		OperatorName:        c.Query("operator_name"),
 		OperatedDate:        c.Query("operated_date"),
 		Page:                page,
 		PageSize:            pageSize,
@@ -37,5 +43,5 @@ func (h *apiHandler) listAttendanceRecordLogs(c *gin.Context) {
 		fail(c, 500, "list attendance record logs failed")
 		return
 	}
-	ok(c, pageResult[query.AttendanceRecordLogItem]{Items: logs, Page: page, PageSize: pageSize, Total: total})
+	ok(c, pageResult[query.AttendanceRecordLogListItem]{Items: logs, Page: page, PageSize: pageSize, Total: total})
 }

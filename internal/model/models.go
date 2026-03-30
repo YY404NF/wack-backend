@@ -163,7 +163,7 @@ type AttendanceRecordLog struct {
 	TermID              uint64    `gorm:"column:term_id;not null;index:idx_term_id;index:idx_term_attendance_record_id;index:idx_term_operated_by_user_id" json:"term_id"`
 	AttendanceRecordID  uint64    `gorm:"column:attendance_record_id;not null;index:idx_term_attendance_record_id" json:"attendance_record_id"`
 	OperatedByUserID    uint64    `gorm:"column:operated_by_user_id;not null;index:idx_term_operated_by_user_id" json:"operated_by_user_id"`
-	OldAttendanceStatus int       `gorm:"column:old_attendance_status;not null" json:"old_attendance_status"`
+	OldAttendanceStatus *int      `gorm:"column:old_attendance_status;default:null" json:"old_attendance_status"`
 	NewAttendanceStatus int       `gorm:"column:new_attendance_status;not null" json:"new_attendance_status"`
 	CreatedAt           time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 }
