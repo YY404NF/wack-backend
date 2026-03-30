@@ -10,21 +10,22 @@ import (
 )
 
 type CourseCalendarItem struct {
-	ID           uint64   `json:"id"`
-	CourseID     uint64   `json:"course_id"`
-	SessionNo    int      `json:"session_no"`
-	Term         string   `json:"term"`
-	WeekNo       int      `json:"week_no"`
-	Weekday      int      `json:"weekday"`
-	Section      int      `json:"section"`
-	BuildingName string   `json:"building_name"`
-	RoomName     string   `json:"room_name"`
-	CourseName   string   `json:"course_name"`
-	TeacherName  string   `json:"teacher_name"`
-	ClassNames   []string `gorm:"-" json:"class_names"`
-	ClassIDs     []uint64 `gorm:"-" json:"class_ids"`
-	Grades       []int    `gorm:"-" json:"grades"`
-	MajorNames   []string `gorm:"-" json:"major_names"`
+	ID            uint64   `json:"id"`
+	CourseGroupID uint64   `json:"course_group_id"`
+	CourseID      uint64   `json:"course_id"`
+	SessionNo     int      `json:"session_no"`
+	Term          string   `json:"term"`
+	WeekNo        int      `json:"week_no"`
+	Weekday       int      `json:"weekday"`
+	Section       int      `json:"section"`
+	BuildingName  string   `json:"building_name"`
+	RoomName      string   `json:"room_name"`
+	CourseName    string   `json:"course_name"`
+	TeacherName   string   `json:"teacher_name"`
+	ClassNames    []string `gorm:"-" json:"class_names"`
+	ClassIDs      []uint64 `gorm:"-" json:"class_ids"`
+	Grades        []int    `gorm:"-" json:"grades"`
+	MajorNames    []string `gorm:"-" json:"major_names"`
 }
 
 type CourseListItem struct {
@@ -79,6 +80,14 @@ type courseCalendarClassRow struct {
 	ClassName string
 	Grade     int
 	MajorName string
+}
+
+type courseCalendarGroupClassRow struct {
+	CourseGroupID uint64
+	ClassID       uint64
+	ClassName     string
+	Grade         int
+	MajorName     string
 }
 
 type courseGroupClassRow struct {
@@ -376,9 +385,10 @@ func (q *CourseQuery) CourseCalendar(weekNo, term string) ([]CourseCalendarItem,
 	}
 	var items []CourseCalendarItem
 	err := query.Select(`course_group_lesson.id,
+			course_group.id AS course_group_id,
 			course_group.course_id,
 			ROW_NUMBER() OVER (
-				PARTITION BY course_group.course_id
+				PARTITION BY course_group.id
 				ORDER BY course_group_lesson.week_no, course_group_lesson.weekday, course_group_lesson.section, course_group_lesson.id
 			) AS session_no,
 			term.name AS term,
@@ -395,43 +405,43 @@ func (q *CourseQuery) CourseCalendar(weekNo, term string) ([]CourseCalendarItem,
 		return items, err
 	}
 
-	courseIDs := make([]uint64, 0, len(items))
-	seenCourseIDs := make(map[uint64]struct{}, len(items))
+	courseGroupIDs := make([]uint64, 0, len(items))
+	seenCourseGroupIDs := make(map[uint64]struct{}, len(items))
 	for _, item := range items {
-		if _, exists := seenCourseIDs[item.CourseID]; exists {
+		if _, exists := seenCourseGroupIDs[item.CourseGroupID]; exists {
 			continue
 		}
-		seenCourseIDs[item.CourseID] = struct{}{}
-		courseIDs = append(courseIDs, item.CourseID)
+		seenCourseGroupIDs[item.CourseGroupID] = struct{}{}
+		courseGroupIDs = append(courseGroupIDs, item.CourseGroupID)
 	}
 
-	var classRows []courseCalendarClassRow
+	var classRows []courseCalendarGroupClassRow
 	if err := q.db.Table("course_group_student").
-		Select("DISTINCT course_group.course_id, class.id AS class_id, class.class_name, class.grade, class.major_name").
+		Select("DISTINCT course_group.id AS course_group_id, class.id AS class_id, class.class_name, class.grade, class.major_name").
 		Joins("JOIN course_group ON course_group.id = course_group_student.course_group_id").
 		Joins("JOIN class ON class.id = course_group_student.class_id").
-		Where("course_group.course_id IN ? AND course_group.status = 1 AND course_group_student.status = 1 AND course_group_student.class_id IS NOT NULL", courseIDs).
+		Where("course_group.id IN ? AND course_group.status = 1 AND course_group_student.status = 1 AND course_group_student.class_id IS NOT NULL", courseGroupIDs).
 		Order("class.grade DESC, class.class_name ASC").
 		Scan(&classRows).Error; err != nil {
 		return nil, err
 	}
 
-	classNamesByCourseID := make(map[uint64][]string, len(courseIDs))
-	classIDsByCourseID := make(map[uint64][]uint64, len(courseIDs))
-	gradesByCourseID := make(map[uint64][]int, len(courseIDs))
-	majorNamesByCourseID := make(map[uint64][]string, len(courseIDs))
+	classNamesByCourseGroupID := make(map[uint64][]string, len(courseGroupIDs))
+	classIDsByCourseGroupID := make(map[uint64][]uint64, len(courseGroupIDs))
+	gradesByCourseGroupID := make(map[uint64][]int, len(courseGroupIDs))
+	majorNamesByCourseGroupID := make(map[uint64][]string, len(courseGroupIDs))
 	for _, row := range classRows {
-		classNamesByCourseID[row.CourseID] = append(classNamesByCourseID[row.CourseID], row.ClassName)
-		classIDsByCourseID[row.CourseID] = append(classIDsByCourseID[row.CourseID], row.ClassID)
-		gradesByCourseID[row.CourseID] = append(gradesByCourseID[row.CourseID], row.Grade)
-		majorNamesByCourseID[row.CourseID] = append(majorNamesByCourseID[row.CourseID], row.MajorName)
+		classNamesByCourseGroupID[row.CourseGroupID] = append(classNamesByCourseGroupID[row.CourseGroupID], row.ClassName)
+		classIDsByCourseGroupID[row.CourseGroupID] = append(classIDsByCourseGroupID[row.CourseGroupID], row.ClassID)
+		gradesByCourseGroupID[row.CourseGroupID] = append(gradesByCourseGroupID[row.CourseGroupID], row.Grade)
+		majorNamesByCourseGroupID[row.CourseGroupID] = append(majorNamesByCourseGroupID[row.CourseGroupID], row.MajorName)
 	}
 
 	for index := range items {
-		items[index].ClassNames = dedupeStrings(classNamesByCourseID[items[index].CourseID])
-		items[index].ClassIDs = dedupeUint64s(classIDsByCourseID[items[index].CourseID])
-		items[index].Grades = dedupeInts(gradesByCourseID[items[index].CourseID])
-		items[index].MajorNames = dedupeStrings(majorNamesByCourseID[items[index].CourseID])
+		items[index].ClassNames = dedupeStrings(classNamesByCourseGroupID[items[index].CourseGroupID])
+		items[index].ClassIDs = dedupeUint64s(classIDsByCourseGroupID[items[index].CourseGroupID])
+		items[index].Grades = dedupeInts(gradesByCourseGroupID[items[index].CourseGroupID])
+		items[index].MajorNames = dedupeStrings(majorNamesByCourseGroupID[items[index].CourseGroupID])
 	}
 
 	return items, nil
