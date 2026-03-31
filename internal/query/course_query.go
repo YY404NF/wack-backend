@@ -2,6 +2,7 @@ package query
 
 import (
 	"sort"
+	"strconv"
 	"time"
 
 	"gorm.io/gorm"
@@ -118,7 +119,7 @@ func (q *CourseQuery) CourseGroups(courseID uint64) ([]CourseGroupListItem, erro
 	var groups []CourseGroupListItem
 	if err := q.db.Model(&model.CourseGroup{}).
 		Where("course_id = ? AND status = 1", courseID).
-		Order("id ASC").
+		Order("id DESC").
 		Find(&groups).Error; err != nil {
 		return nil, err
 	}
@@ -215,7 +216,7 @@ func (q *CourseQuery) CourseGroupLessons(groupID uint64) ([]model.CourseGroupLes
 	return lessons, err
 }
 
-func (q *CourseQuery) AvailableCourseGroupClasses(groupID uint64, keyword string, page, pageSize int) ([]AvailableCourseGroupClassItem, int64, error) {
+func (q *CourseQuery) AvailableCourseGroupClasses(groupID uint64, className string, page, pageSize int) ([]AvailableCourseGroupClassItem, int64, error) {
 	query := q.db.Table("class").
 		Select("class.id, class.class_name, class.grade, class.major_name, COUNT(student.id) AS student_count").
 		Joins("LEFT JOIN student ON student.class_id = class.id AND student.status = 1").
@@ -226,8 +227,8 @@ func (q *CourseQuery) AvailableCourseGroupClasses(groupID uint64, keyword string
 				Where("course_group_id = ? AND status = 1 AND class_id IS NOT NULL", groupID),
 		).
 		Group("class.id")
-	if keyword != "" {
-		query = query.Where("class.class_name LIKE ? OR class.major_name LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+	if className != "" {
+		query = query.Where("class.class_name LIKE ?", "%"+className+"%")
 	}
 	var items []AvailableCourseGroupClassItem
 	query = query.Group("class.id")
@@ -236,14 +237,14 @@ func (q *CourseQuery) AvailableCourseGroupClasses(groupID uint64, keyword string
 	if err := q.db.Table("(?) AS available_classes", query).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := query.Order("class.grade DESC, class.major_name ASC, class.class_name ASC").
+	err := query.Order("class.id DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Scan(&items).Error
 	return items, total, err
 }
 
-func (q *CourseQuery) AvailableCourseGroupStudents(groupID uint64, keyword string, page, pageSize int) ([]AvailableCourseGroupStudentItem, int64, error) {
+func (q *CourseQuery) AvailableCourseGroupStudents(groupID uint64, studentNo, studentName, className string, page, pageSize int) ([]AvailableCourseGroupStudentItem, int64, error) {
 	query := q.db.Table("student").
 		Select("student.id, student.class_id, student.student_no, student.student_name, class.class_name, class.grade, class.major_name").
 		Joins("JOIN class ON class.id = student.class_id").
@@ -253,30 +254,40 @@ func (q *CourseQuery) AvailableCourseGroupStudents(groupID uint64, keyword strin
 				Select("student_id").
 				Where("course_group_id = ? AND status = 1", groupID),
 		)
-	if keyword != "" {
-		query = query.Where(
-			"student.student_no LIKE ? OR student.student_name LIKE ? OR class.class_name LIKE ?",
-			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%",
-		)
+	if studentNo != "" {
+		query = query.Where("student.student_no LIKE ?", "%"+studentNo+"%")
+	}
+	if studentName != "" {
+		query = query.Where("student.student_name LIKE ?", "%"+studentName+"%")
+	}
+	if className != "" {
+		query = query.Where("class.class_name LIKE ?", "%"+className+"%")
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	var items []AvailableCourseGroupStudentItem
-	err := query.Order("class.class_name ASC, student.student_no ASC, student.id ASC").
+	err := query.Order("class.id DESC, student.student_no ASC, student.id ASC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Scan(&items).Error
 	return items, total, err
 }
 
-func (q *CourseQuery) ListCourses(term, teacher, keyword string, classID uint64, page, pageSize int) ([]CourseListItem, int64, error) {
+func (q *CourseQuery) ListCourses(term, grade, teacher, keyword, className, studentCount string, page, pageSize int) ([]CourseListItem, int64, error) {
 	queryDB := q.db.Table("course").
 		Joins("JOIN term ON term.id = course.term_id").
 		Where("course.status = 1")
 	if term != "" {
 		queryDB = queryDB.Where("term.name = ?", term)
+	}
+	if grade != "" {
+		gradeValue, err := strconv.Atoi(grade)
+		if err != nil {
+			return []CourseListItem{}, 0, nil
+		}
+		queryDB = queryDB.Where("course.grade = ?", gradeValue)
 	}
 	if teacher != "" {
 		queryDB = queryDB.Where("course.teacher_name LIKE ?", "%"+teacher+"%")
@@ -284,18 +295,36 @@ func (q *CourseQuery) ListCourses(term, teacher, keyword string, classID uint64,
 	if keyword != "" {
 		queryDB = queryDB.Where("course.course_name LIKE ?", "%"+keyword+"%")
 	}
-	if classID > 0 {
+	if className != "" {
 		queryDB = queryDB.Where(`
 			EXISTS (
 				SELECT 1
 				FROM course_group_student
 				JOIN course_group ON course_group.id = course_group_student.course_group_id
+				JOIN class ON class.id = course_group_student.class_id
 				WHERE course_group.course_id = course.id
 				  AND course_group.status = 1
 				  AND course_group_student.status = 1
-				  AND course_group_student.class_id = ?
+				  AND class.status = 1
+				  AND class.class_name LIKE ?
 			)
-		`, classID)
+		`, "%"+className+"%")
+	}
+	if studentCount != "" {
+		studentCountValue, err := strconv.Atoi(studentCount)
+		if err != nil {
+			return []CourseListItem{}, 0, nil
+		}
+		queryDB = queryDB.Where(`
+			(
+				SELECT COUNT(DISTINCT course_group_student.student_id)
+				FROM course_group_student
+				JOIN course_group ON course_group.id = course_group_student.course_group_id
+				WHERE course_group.course_id = course.id
+				  AND course_group.status = 1
+				  AND course_group_student.status = 1
+			) = ?
+		`, studentCountValue)
 	}
 	var total int64
 	if err := queryDB.Count(&total).Error; err != nil {

@@ -1,7 +1,6 @@
 package httpserver
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -21,8 +20,16 @@ type courseRequest struct {
 
 func (h *apiHandler) listCourses(c *gin.Context) {
 	page, pageSize := parsePage(c)
-	classID, _ := strconv.ParseUint(c.DefaultQuery("class_id", "0"), 10, 64)
-	items, total, err := h.courses.ListCourses(c.Query("term"), c.Query("teacher_name"), strings.TrimSpace(c.Query("keyword")), classID, page, pageSize)
+	items, total, err := h.courses.ListCourses(
+		c.Query("term"),
+		c.Query("grade"),
+		c.Query("teacher_name"),
+		strings.TrimSpace(c.Query("keyword")),
+		c.Query("class_name"),
+		c.Query("student_count"),
+		page,
+		pageSize,
+	)
 	if err != nil {
 		fail(c, 500, "list courses failed")
 		return
@@ -333,7 +340,7 @@ func (h *apiHandler) listAvailableCourseGroupClasses(c *gin.Context) {
 		fail(c, 400, err.Error())
 		return
 	}
-	items, total, err := h.courses.ListAvailableCourseGroupClasses(courseID, groupID, c.Query("keyword"), page, pageSize)
+	items, total, err := h.courses.ListAvailableCourseGroupClasses(courseID, groupID, c.Query("class_name"), page, pageSize)
 	if err != nil {
 		switch {
 		case service.IsServiceError(err, service.ErrCourseGroupNotFound):
@@ -420,7 +427,15 @@ func (h *apiHandler) listAvailableCourseGroupStudents(c *gin.Context) {
 		fail(c, 400, err.Error())
 		return
 	}
-	items, total, err := h.courses.ListAvailableCourseGroupStudents(courseID, groupID, c.Query("keyword"), page, pageSize)
+	items, total, err := h.courses.ListAvailableCourseGroupStudents(
+		courseID,
+		groupID,
+		c.Query("student_no"),
+		c.Query("student_name"),
+		c.Query("class_name"),
+		page,
+		pageSize,
+	)
 	if err != nil {
 		switch {
 		case service.IsServiceError(err, service.ErrCourseGroupNotFound):

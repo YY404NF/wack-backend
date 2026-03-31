@@ -18,8 +18,17 @@ func NewCourseService(db *gorm.DB) *CourseService {
 	return &CourseService{db: db, courses: query.NewCourseQuery(db)}
 }
 
-func (s *CourseService) ListCourses(term, teacher, keyword string, classID uint64, page, pageSize int) ([]query.CourseListItem, int64, error) {
-	return s.courses.ListCourses(term, teacher, strings.TrimSpace(keyword), classID, page, pageSize)
+func (s *CourseService) ListCourses(term, grade, teacher, keyword, className, studentCount string, page, pageSize int) ([]query.CourseListItem, int64, error) {
+	return s.courses.ListCourses(
+		strings.TrimSpace(term),
+		strings.TrimSpace(grade),
+		strings.TrimSpace(teacher),
+		strings.TrimSpace(keyword),
+		strings.TrimSpace(className),
+		strings.TrimSpace(studentCount),
+		page,
+		pageSize,
+	)
 }
 
 func (s *CourseService) CreateCourse(course model.Course) (model.Course, error) {
@@ -161,24 +170,31 @@ func (s *CourseService) GetCourseGroupStudents(courseID, groupID uint64) ([]quer
 	return s.courses.CourseGroupStudents(groupID)
 }
 
-func (s *CourseService) ListAvailableCourseGroupClasses(courseID, groupID uint64, keyword string, page, pageSize int) ([]query.AvailableCourseGroupClassItem, int64, error) {
+func (s *CourseService) ListAvailableCourseGroupClasses(courseID, groupID uint64, className string, page, pageSize int) ([]query.AvailableCourseGroupClassItem, int64, error) {
 	if _, err := s.courses.CourseGroup(courseID, groupID); err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, 0, ErrCourseGroupNotFound
 		}
 		return nil, 0, err
 	}
-	return s.courses.AvailableCourseGroupClasses(groupID, strings.TrimSpace(keyword), page, pageSize)
+	return s.courses.AvailableCourseGroupClasses(groupID, strings.TrimSpace(className), page, pageSize)
 }
 
-func (s *CourseService) ListAvailableCourseGroupStudents(courseID, groupID uint64, keyword string, page, pageSize int) ([]query.AvailableCourseGroupStudentItem, int64, error) {
+func (s *CourseService) ListAvailableCourseGroupStudents(courseID, groupID uint64, studentNo, studentName, className string, page, pageSize int) ([]query.AvailableCourseGroupStudentItem, int64, error) {
 	if _, err := s.courses.CourseGroup(courseID, groupID); err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, 0, ErrCourseGroupNotFound
 		}
 		return nil, 0, err
 	}
-	return s.courses.AvailableCourseGroupStudents(groupID, strings.TrimSpace(keyword), page, pageSize)
+	return s.courses.AvailableCourseGroupStudents(
+		groupID,
+		strings.TrimSpace(studentNo),
+		strings.TrimSpace(studentName),
+		strings.TrimSpace(className),
+		page,
+		pageSize,
+	)
 }
 
 func (s *CourseService) CreateCourseGroup(courseID uint64) (model.CourseGroup, error) {
@@ -328,11 +344,24 @@ func (s *CourseService) AddCourseGroupStudents(courseID, groupID uint64, student
 			return ErrStudentNotFound
 		}
 		for _, student := range students {
+			classID := (*uint64)(nil)
+			if student.ClassID != nil {
+				var classRelationCount int64
+				if err := tx.Model(&model.CourseGroupStudent{}).
+					Where("course_group_id = ? AND class_id = ? AND status = 1", groupID, *student.ClassID).
+					Count(&classRelationCount).Error; err != nil {
+					return err
+				}
+				if classRelationCount > 0 {
+					classID = new(uint64)
+					*classID = *student.ClassID
+				}
+			}
 			if err := upsertCourseGroupStudent(tx, model.CourseGroupStudent{
 				TermID:        group.TermID,
 				CourseGroupID: group.ID,
 				StudentID:     student.ID,
-				ClassID:       nil,
+				ClassID:       classID,
 				Status:        1,
 			}); err != nil {
 				return err
