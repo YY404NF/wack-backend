@@ -23,8 +23,32 @@ func (h *apiHandler) listStudentOptions(c *gin.Context) {
 }
 
 func (h *apiHandler) listStudents(c *gin.Context) {
-	page, pageSize := parsePage(c)
+	requestPage, pageSize := parsePage(c)
+	page := requestPage
 	classID, _ := strconv.ParseUint(c.DefaultQuery("class_id", "0"), 10, 64)
+	focusStudentID, _ := strconv.ParseUint(c.DefaultQuery("focus_student_ref_id", "0"), 10, 64)
+	listInput := service.ListStudentsInput{
+		Page:      page,
+		PageSize:  pageSize,
+		ClassID:   classID,
+		Keyword:   c.Query("keyword"),
+		StudentID: c.Query("student_id"),
+		RealName:  c.Query("real_name"),
+		ClassName: c.Query("class_name"),
+	}
+	var focusResult *query.FocusPageResult
+	if focusStudentID > 0 {
+		located, err := h.students.LocateStudentPage(listInput, focusStudentID)
+		if err != nil {
+			fail(c, 500, "locate student page failed")
+			return
+		}
+		focusResult = &located
+		if located.Found {
+			page = located.Page
+			listInput.Page = page
+		}
+	}
 	items, total, err := h.students.ListStudents(service.ListStudentsInput{
 		Page:      page,
 		PageSize:  pageSize,
@@ -38,7 +62,15 @@ func (h *apiHandler) listStudents(c *gin.Context) {
 		fail(c, 500, "list students failed")
 		return
 	}
-	ok(c, pageResult[query.StudentItem]{Items: items, Page: page, PageSize: pageSize, Total: total})
+	result := pageResult[query.StudentItem]{Items: items, Page: page, PageSize: pageSize, Total: total}
+	if focusResult != nil {
+		result.FocusFound = &focusResult.Found
+		if focusResult.Found {
+			result.FocusPage = &focusResult.Page
+			result.FocusRowKey = &focusResult.RowKey
+		}
+	}
+	ok(c, result)
 }
 
 func (h *apiHandler) createStudent(c *gin.Context) {

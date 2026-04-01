@@ -31,6 +31,19 @@ func (s *CourseService) ListCourses(term, grade, teacher, keyword, className, st
 	)
 }
 
+func (s *CourseService) LocateCoursePage(term, grade, teacher, keyword, className, studentCount string, focusCourseID uint64, pageSize int) (query.FocusPageResult, error) {
+	return s.courses.LocateCoursePage(
+		strings.TrimSpace(term),
+		strings.TrimSpace(grade),
+		strings.TrimSpace(teacher),
+		strings.TrimSpace(keyword),
+		strings.TrimSpace(className),
+		strings.TrimSpace(studentCount),
+		focusCourseID,
+		pageSize,
+	)
+}
+
 func (s *CourseService) CreateCourse(course model.Course) (model.Course, error) {
 	course.CourseName = strings.TrimSpace(course.CourseName)
 	course.TeacherName = strings.TrimSpace(course.TeacherName)

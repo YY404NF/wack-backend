@@ -44,6 +44,8 @@ type OverviewStudentRankingItem struct {
 }
 
 type OverviewRecentSessionItem struct {
+	CourseID            uint64  `json:"course_id"`
+	CourseGroupID       uint64  `json:"course_group_id"`
 	CourseGroupLessonID uint64  `json:"course_group_lesson_id"`
 	CourseName          string  `json:"course_name"`
 	TeacherName         string  `json:"teacher_name"`
@@ -62,18 +64,21 @@ type OverviewRecentSessionItem struct {
 }
 
 type OverviewRecentAbnormalItem struct {
-	AttendanceRecordID uint64 `json:"attendance_record_id"`
-	StudentRefID       uint64 `json:"student_ref_id"`
-	StudentID          string `json:"student_id"`
-	RealName           string `json:"real_name"`
-	ClassName          string `json:"class_name"`
-	CourseName         string `json:"course_name"`
-	TeacherName        string `json:"teacher_name"`
-	Grade              int    `json:"grade"`
-	Status             int    `json:"status"`
-	WeekNo             int    `json:"week_no"`
-	Weekday            int    `json:"weekday"`
-	Section            int    `json:"section"`
+	AttendanceRecordID  uint64 `json:"attendance_record_id"`
+	CourseID            uint64 `json:"course_id"`
+	CourseGroupID       uint64 `json:"course_group_id"`
+	CourseGroupLessonID uint64 `json:"course_group_lesson_id"`
+	StudentRefID        uint64 `json:"student_ref_id"`
+	StudentID           string `json:"student_id"`
+	RealName            string `json:"real_name"`
+	ClassName           string `json:"class_name"`
+	CourseName          string `json:"course_name"`
+	TeacherName         string `json:"teacher_name"`
+	Grade               int    `json:"grade"`
+	Status              int    `json:"status"`
+	WeekNo              int    `json:"week_no"`
+	Weekday             int    `json:"weekday"`
+	Section             int    `json:"section"`
 }
 
 type AdminOverviewData struct {
@@ -305,6 +310,8 @@ func (q *AttendanceQuery) OverviewRecentSessions(termName string) ([]OverviewRec
 	var items []OverviewRecentSessionItem
 	err := q.db.Raw(`
 		SELECT
+			course.id AS course_id,
+			course_group.id AS course_group_id,
 			course_group_lesson.id AS course_group_lesson_id,
 			course.course_name,
 			course.teacher_name,
@@ -365,6 +372,9 @@ func (q *AttendanceQuery) OverviewRecentAbnormalStudents(termName string) ([]Ove
 	err := q.db.Raw(`
 		SELECT
 			attendance_record.id AS attendance_record_id,
+			course.id AS course_id,
+			course_group.id AS course_group_id,
+			attendance_record.course_group_lesson_id AS course_group_lesson_id,
 			student.id AS student_ref_id,
 			student.student_no AS student_id,
 			student.student_name AS real_name,
@@ -380,6 +390,7 @@ func (q *AttendanceQuery) OverviewRecentAbnormalStudents(termName string) ([]Ove
 		JOIN student ON student.id = attendance_record.student_id
 		LEFT JOIN class ON class.id = attendance_record.class_id
 		JOIN course_group_lesson ON course_group_lesson.id = attendance_record.course_group_lesson_id
+		JOIN course_group ON course_group.id = course_group_lesson.course_group_id
 		JOIN course ON course.id = attendance_record.course_id
 		JOIN term ON term.id = attendance_record.term_id
 		WHERE term.name = ?
@@ -631,21 +642,8 @@ func (q *AttendanceQuery) AttendanceSessionRecords(sessionID uint64) ([]Attendan
 	return items, err
 }
 
-func (q *AttendanceQuery) AttendanceSessionRecordPage(sessionID uint64, studentID, realName, className, status string, page, pageSize int) ([]AttendanceRecordItem, int64, error) {
-	var records []AttendanceRecordItem
+func (q *AttendanceQuery) attendanceSessionRecordBase(sessionID uint64, studentID, realName, className, status string) *gorm.DB {
 	base := q.db.Table("course_group_student").
-		Select(`
-			student.id AS id,
-			attendance_record.id AS attendance_record_id,
-			course_group_lesson.id AS course_group_lesson_id,
-			student.student_no AS student_id,
-			student.student_name AS real_name,
-			course_group_student.class_id AS class_id,
-			COALESCE(class.class_name, '') AS class_name,
-			attendance_record.attendance_status AS status,
-			attendance_record.updated_by_user_id AS status_set_by_user_id,
-			attendance_record.updated_at AS status_set_at
-		`).
 		Joins("JOIN course_group_lesson ON course_group_lesson.course_group_id = course_group_student.course_group_id AND course_group_lesson.id = ?", sessionID).
 		Joins("JOIN student ON student.id = course_group_student.student_id").
 		Joins("LEFT JOIN attendance_record ON attendance_record.course_group_lesson_id = course_group_lesson.id AND attendance_record.student_id = course_group_student.student_id").
@@ -666,17 +664,81 @@ func (q *AttendanceQuery) AttendanceSessionRecordPage(sessionID uint64, studentI
 	case "0", "1", "2", "3":
 		base = base.Where("attendance_record.attendance_status = ?", status)
 	}
+	return base
+}
+
+func (q *AttendanceQuery) AttendanceSessionRecordPage(sessionID uint64, studentID, realName, className, status string, page, pageSize int) ([]AttendanceRecordItem, int64, error) {
+	var records []AttendanceRecordItem
+	base := q.attendanceSessionRecordBase(sessionID, studentID, realName, className, status)
 
 	var total int64
 	if err := q.db.Table("(?) AS attendance_records", base).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	err := base.
+		Select(`
+			student.id AS id,
+			attendance_record.id AS attendance_record_id,
+			course_group_lesson.id AS course_group_lesson_id,
+			student.student_no AS student_id,
+			student.student_name AS real_name,
+			course_group_student.class_id AS class_id,
+			COALESCE(class.class_name, '') AS class_name,
+			attendance_record.attendance_status AS status,
+			attendance_record.updated_by_user_id AS status_set_by_user_id,
+			attendance_record.updated_at AS status_set_at
+		`).
 		Order("COALESCE(class.class_name, '其他学生') ASC, student.student_no ASC, student.id ASC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Scan(&records).Error
 	return records, total, err
+}
+
+func (q *AttendanceQuery) LocateAttendanceSessionRecordPage(sessionID uint64, studentID, realName, className, status string, focusStudentID uint64, pageSize int) (FocusPageResult, error) {
+	base := q.attendanceSessionRecordBase(sessionID, studentID, realName, className, status)
+
+	var target struct {
+		ID            uint64 `gorm:"column:id"`
+		StudentNo     string `gorm:"column:student_no"`
+		SortClassName string `gorm:"column:sort_class_name"`
+	}
+	if err := base.Select(`
+			student.id AS id,
+			student.student_no AS student_no,
+			COALESCE(class.class_name, '其他学生') AS sort_class_name
+		`).
+		Where("student.id = ?", focusStudentID).
+		Take(&target).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return FocusPageResult{}, nil
+		}
+		return FocusPageResult{}, err
+	}
+
+	var rowNo int64
+	if err := q.attendanceSessionRecordBase(sessionID, studentID, realName, className, status).
+		Where(`
+			COALESCE(class.class_name, '其他学生') < ?
+			OR (COALESCE(class.class_name, '其他学生') = ? AND student.student_no < ?)
+			OR (COALESCE(class.class_name, '其他学生') = ? AND student.student_no = ? AND student.id <= ?)
+		`,
+			target.SortClassName,
+			target.SortClassName, target.StudentNo,
+			target.SortClassName, target.StudentNo, target.ID,
+		).
+		Count(&rowNo).Error; err != nil {
+		return FocusPageResult{}, err
+	}
+	if rowNo <= 0 {
+		return FocusPageResult{}, nil
+	}
+
+	return FocusPageResult{
+		Found:  true,
+		Page:   int((rowNo-1)/int64(pageSize)) + 1,
+		RowKey: target.ID,
+	}, nil
 }
 
 func (q *AttendanceQuery) AttendanceSessionRecordsForClass(sessionID uint64, classID uint64) ([]AttendanceRecordItem, error) {

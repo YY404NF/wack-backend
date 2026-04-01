@@ -115,6 +115,60 @@ func NewCourseQuery(db *gorm.DB) *CourseQuery {
 	return &CourseQuery{db: db}
 }
 
+func (q *CourseQuery) courseListBaseQuery(term, grade, teacher, keyword, className, studentCount string) (*gorm.DB, error) {
+	queryDB := q.db.Table("course").
+		Joins("JOIN term ON term.id = course.term_id").
+		Where("course.status = 1")
+	if term != "" {
+		queryDB = queryDB.Where("term.name = ?", term)
+	}
+	if grade != "" {
+		gradeValue, err := strconv.Atoi(grade)
+		if err != nil {
+			return nil, nil
+		}
+		queryDB = queryDB.Where("course.grade = ?", gradeValue)
+	}
+	if teacher != "" {
+		queryDB = queryDB.Where("course.teacher_name LIKE ?", "%"+teacher+"%")
+	}
+	if keyword != "" {
+		queryDB = queryDB.Where("course.course_name LIKE ?", "%"+keyword+"%")
+	}
+	if className != "" {
+		queryDB = queryDB.Where(`
+			EXISTS (
+				SELECT 1
+				FROM course_group_student
+				JOIN course_group ON course_group.id = course_group_student.course_group_id
+				JOIN class ON class.id = course_group_student.class_id
+				WHERE course_group.course_id = course.id
+				  AND course_group.status = 1
+				  AND course_group_student.status = 1
+				  AND class.status = 1
+				  AND class.class_name LIKE ?
+			)
+		`, "%"+className+"%")
+	}
+	if studentCount != "" {
+		studentCountValue, err := strconv.Atoi(studentCount)
+		if err != nil {
+			return nil, nil
+		}
+		queryDB = queryDB.Where(`
+			(
+				SELECT COUNT(DISTINCT course_group_student.student_id)
+				FROM course_group_student
+				JOIN course_group ON course_group.id = course_group_student.course_group_id
+				WHERE course_group.course_id = course.id
+				  AND course_group.status = 1
+				  AND course_group_student.status = 1
+			) = ?
+		`, studentCountValue)
+	}
+	return queryDB, nil
+}
+
 func (q *CourseQuery) CourseGroups(courseID uint64) ([]CourseGroupListItem, error) {
 	var groups []CourseGroupListItem
 	if err := q.db.Model(&model.CourseGroup{}).
@@ -276,55 +330,12 @@ func (q *CourseQuery) AvailableCourseGroupStudents(groupID uint64, studentNo, st
 }
 
 func (q *CourseQuery) ListCourses(term, grade, teacher, keyword, className, studentCount string, page, pageSize int) ([]CourseListItem, int64, error) {
-	queryDB := q.db.Table("course").
-		Joins("JOIN term ON term.id = course.term_id").
-		Where("course.status = 1")
-	if term != "" {
-		queryDB = queryDB.Where("term.name = ?", term)
+	queryDB, err := q.courseListBaseQuery(term, grade, teacher, keyword, className, studentCount)
+	if err != nil {
+		return nil, 0, err
 	}
-	if grade != "" {
-		gradeValue, err := strconv.Atoi(grade)
-		if err != nil {
-			return []CourseListItem{}, 0, nil
-		}
-		queryDB = queryDB.Where("course.grade = ?", gradeValue)
-	}
-	if teacher != "" {
-		queryDB = queryDB.Where("course.teacher_name LIKE ?", "%"+teacher+"%")
-	}
-	if keyword != "" {
-		queryDB = queryDB.Where("course.course_name LIKE ?", "%"+keyword+"%")
-	}
-	if className != "" {
-		queryDB = queryDB.Where(`
-			EXISTS (
-				SELECT 1
-				FROM course_group_student
-				JOIN course_group ON course_group.id = course_group_student.course_group_id
-				JOIN class ON class.id = course_group_student.class_id
-				WHERE course_group.course_id = course.id
-				  AND course_group.status = 1
-				  AND course_group_student.status = 1
-				  AND class.status = 1
-				  AND class.class_name LIKE ?
-			)
-		`, "%"+className+"%")
-	}
-	if studentCount != "" {
-		studentCountValue, err := strconv.Atoi(studentCount)
-		if err != nil {
-			return []CourseListItem{}, 0, nil
-		}
-		queryDB = queryDB.Where(`
-			(
-				SELECT COUNT(DISTINCT course_group_student.student_id)
-				FROM course_group_student
-				JOIN course_group ON course_group.id = course_group_student.course_group_id
-				WHERE course_group.course_id = course.id
-				  AND course_group.status = 1
-				  AND course_group_student.status = 1
-			) = ?
-		`, studentCountValue)
+	if queryDB == nil {
+		return []CourseListItem{}, 0, nil
 	}
 	var total int64
 	if err := queryDB.Count(&total).Error; err != nil {
@@ -398,6 +409,42 @@ func (q *CourseQuery) ListCourses(term, grade, teacher, keyword, className, stud
 	}
 
 	return courses, total, nil
+}
+
+func (q *CourseQuery) LocateCoursePage(term, grade, teacher, keyword, className, studentCount string, focusCourseID uint64, pageSize int) (FocusPageResult, error) {
+	base, err := q.courseListBaseQuery(term, grade, teacher, keyword, className, studentCount)
+	if err != nil {
+		return FocusPageResult{}, err
+	}
+	if base == nil {
+		return FocusPageResult{}, nil
+	}
+
+	var target struct {
+		ID uint64 `gorm:"column:id"`
+	}
+	if err := base.Select("course.id AS id").Where("course.id = ?", focusCourseID).Take(&target).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return FocusPageResult{}, nil
+		}
+		return FocusPageResult{}, err
+	}
+
+	var rowNo int64
+	if err := q.db.Table("(?) AS focused_courses", base.Select("course.id AS id")).
+		Where("id >= ?", target.ID).
+		Count(&rowNo).Error; err != nil {
+		return FocusPageResult{}, err
+	}
+	if rowNo <= 0 {
+		return FocusPageResult{}, nil
+	}
+
+	return FocusPageResult{
+		Found:  true,
+		Page:   int((rowNo-1)/int64(pageSize)) + 1,
+		RowKey: target.ID,
+	}, nil
 }
 
 func (q *CourseQuery) CourseCalendar(weekNo, term string) ([]CourseCalendarItem, error) {

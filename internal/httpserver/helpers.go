@@ -42,10 +42,13 @@ func newAPIHandler(db *gorm.DB, sessions *service.SessionService) *apiHandler {
 }
 
 type pageResult[T any] struct {
-	Items    []T   `json:"items"`
-	Page     int   `json:"page"`
-	PageSize int   `json:"page_size"`
-	Total    int64 `json:"total"`
+	Items       []T     `json:"items"`
+	Page        int     `json:"page"`
+	PageSize    int     `json:"page_size"`
+	Total       int64   `json:"total"`
+	FocusFound  *bool   `json:"focus_found,omitempty"`
+	FocusPage   *int    `json:"focus_page,omitempty"`
+	FocusRowKey *uint64 `json:"focus_row_key,omitempty"`
 }
 
 func parsePage(c *gin.Context) (int, int) {
@@ -54,7 +57,7 @@ func parsePage(c *gin.Context) (int, int) {
 	if value, err := strconv.Atoi(c.DefaultQuery("page", "1")); err == nil && value > 0 {
 		page = value
 	}
-	if value, err := strconv.Atoi(c.DefaultQuery("page_size", "20")); err == nil && value > 0 && value <= 100 {
+	if value, err := strconv.Atoi(c.DefaultQuery("page_size", "20")); err == nil && value > 0 && value <= 1000 {
 		pageSize = value
 	}
 	return page, pageSize
@@ -77,6 +80,18 @@ func parseUintParam(c *gin.Context, name string) (uint64, error) {
 		return 0, errors.New("invalid path param")
 	}
 	return value, nil
+}
+
+func parseUintQuery(c *gin.Context, name string) (uint64, error) {
+	value := c.Query(name)
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, errors.New("invalid query param")
+	}
+	return parsed, nil
 }
 
 func (h *apiHandler) findUserByLoginID(loginID string) (model.User, error) {

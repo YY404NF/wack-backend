@@ -34,39 +34,86 @@ func NewClassQuery(db *gorm.DB) *ClassQuery {
 	return &ClassQuery{db: db}
 }
 
-func (q *ClassQuery) ListClasses(grade, majorName, className string, page, pageSize int) ([]model.Class, int64, error) {
-	base := q.db.Table("class").
-		Select("class.id, class.class_name, class.grade, class.major_name, class.status, class.created_at, class.updated_at, COUNT(student.id) AS student_count").
-		Joins("LEFT JOIN student ON student.class_id = class.id AND student.status = 1").
-		Where("class.status = 1").
-		Group("class.id")
-	countQuery := q.db.Table("class").Where("class.status = 1")
+func (q *ClassQuery) classListFilterBase(grade, majorName, className string) *gorm.DB {
+	base := q.db.Table("class").Where("class.status = 1")
 
 	if grade = strings.TrimSpace(grade); grade != "" {
 		base = base.Where("CAST(class.grade AS TEXT) = ?", grade)
-		countQuery = countQuery.Where("CAST(class.grade AS TEXT) = ?", grade)
 	}
 	if majorName = strings.TrimSpace(majorName); majorName != "" {
 		base = base.Where("class.major_name LIKE ?", "%"+majorName+"%")
-		countQuery = countQuery.Where("class.major_name LIKE ?", "%"+majorName+"%")
 	}
 	if className = strings.TrimSpace(className); className != "" {
 		base = base.Where("class.class_name LIKE ?", "%"+className+"%")
-		countQuery = countQuery.Where("class.class_name LIKE ?", "%"+className+"%")
 	}
 
+	return base
+}
+
+func (q *ClassQuery) ListClasses(grade, majorName, className string, page, pageSize int) ([]model.Class, int64, error) {
+	filterBase := q.classListFilterBase(grade, majorName, className)
+	base := filterBase.
+		Select("class.id, class.class_name, class.grade, class.major_name, class.status, class.created_at, class.updated_at, COUNT(student.id) AS student_count").
+		Joins("LEFT JOIN student ON student.class_id = class.id AND student.status = 1").
+		Group("class.id")
+
 	var total int64
-	if err := countQuery.Count(&total).Error; err != nil {
+	if err := filterBase.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	var items []model.Class
 	err := base.
-		Order("class.grade DESC, class.major_name ASC, class.class_name ASC").
+		Order("class.grade DESC, class.major_name ASC, class.class_name ASC, class.id ASC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Scan(&items).Error
 	return items, total, err
+}
+
+func (q *ClassQuery) LocateClassPage(grade, majorName, className string, focusClassID uint64, pageSize int) (FocusPageResult, error) {
+	base := q.classListFilterBase(grade, majorName, className)
+
+	var target struct {
+		ID        uint64 `gorm:"column:id"`
+		Grade     int    `gorm:"column:grade"`
+		MajorName string `gorm:"column:major_name"`
+		ClassName string `gorm:"column:class_name"`
+	}
+	if err := base.Select("class.id, class.grade, class.major_name, class.class_name").
+		Where("class.id = ?", focusClassID).
+		Take(&target).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return FocusPageResult{}, nil
+		}
+		return FocusPageResult{}, err
+	}
+
+	var rowNo int64
+	if err := q.classListFilterBase(grade, majorName, className).
+		Where(`
+			class.grade > ?
+			OR (class.grade = ? AND class.major_name < ?)
+			OR (class.grade = ? AND class.major_name = ? AND class.class_name < ?)
+			OR (class.grade = ? AND class.major_name = ? AND class.class_name = ? AND class.id <= ?)
+		`,
+			target.Grade,
+			target.Grade, target.MajorName,
+			target.Grade, target.MajorName, target.ClassName,
+			target.Grade, target.MajorName, target.ClassName, target.ID,
+		).
+		Count(&rowNo).Error; err != nil {
+		return FocusPageResult{}, err
+	}
+	if rowNo <= 0 {
+		return FocusPageResult{}, nil
+	}
+
+	return FocusPageResult{
+		Found:  true,
+		Page:   int((rowNo-1)/int64(pageSize)) + 1,
+		RowKey: target.ID,
+	}, nil
 }
 
 func (q *ClassQuery) ClassByID(classID uint64) (model.Class, error) {

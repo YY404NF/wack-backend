@@ -23,6 +23,10 @@ func (s *ClassService) ListClasses(grade, majorName, className string, page, pag
 	return s.classes.ListClasses(grade, strings.TrimSpace(majorName), strings.TrimSpace(className), page, pageSize)
 }
 
+func (s *ClassService) LocateClassPage(grade, majorName, className string, focusClassID uint64, pageSize int) (query.FocusPageResult, error) {
+	return s.classes.LocateClassPage(grade, strings.TrimSpace(majorName), strings.TrimSpace(className), focusClassID, pageSize)
+}
+
 func (s *ClassService) CreateClass(class model.Class) (model.Class, error) {
 	class.ClassName = strings.TrimSpace(class.ClassName)
 	class.MajorName = strings.TrimSpace(class.MajorName)

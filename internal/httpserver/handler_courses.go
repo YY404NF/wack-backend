@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -19,7 +20,30 @@ type courseRequest struct {
 }
 
 func (h *apiHandler) listCourses(c *gin.Context) {
-	page, pageSize := parsePage(c)
+	requestPage, pageSize := parsePage(c)
+	page := requestPage
+	focusCourseID, _ := strconv.ParseUint(c.DefaultQuery("focus_course_id", "0"), 10, 64)
+	var focusResult *query.FocusPageResult
+	if focusCourseID > 0 {
+		located, err := h.courses.LocateCoursePage(
+			c.Query("term"),
+			c.Query("grade"),
+			c.Query("teacher_name"),
+			strings.TrimSpace(c.Query("keyword")),
+			c.Query("class_name"),
+			c.Query("student_count"),
+			focusCourseID,
+			pageSize,
+		)
+		if err != nil {
+			fail(c, 500, "locate course page failed")
+			return
+		}
+		focusResult = &located
+		if located.Found {
+			page = located.Page
+		}
+	}
 	items, total, err := h.courses.ListCourses(
 		c.Query("term"),
 		c.Query("grade"),
@@ -34,7 +58,15 @@ func (h *apiHandler) listCourses(c *gin.Context) {
 		fail(c, 500, "list courses failed")
 		return
 	}
-	ok(c, pageResult[query.CourseListItem]{Items: items, Page: page, PageSize: pageSize, Total: total})
+	result := pageResult[query.CourseListItem]{Items: items, Page: page, PageSize: pageSize, Total: total}
+	if focusResult != nil {
+		result.FocusFound = &focusResult.Found
+		if focusResult.Found {
+			result.FocusPage = &focusResult.Page
+			result.FocusRowKey = &focusResult.RowKey
+		}
+	}
+	ok(c, result)
 }
 
 func (h *apiHandler) createCourse(c *gin.Context) {

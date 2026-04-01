@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -15,13 +16,35 @@ import (
 )
 
 func (h *apiHandler) listClasses(c *gin.Context) {
-	page, pageSize := parsePage(c)
+	requestPage, pageSize := parsePage(c)
+	page := requestPage
+	focusClassID, _ := strconv.ParseUint(c.DefaultQuery("focus_class_id", "0"), 10, 64)
+	var focusResult *query.FocusPageResult
+	if focusClassID > 0 {
+		located, err := h.classes.LocateClassPage(c.Query("grade"), c.Query("major_name"), c.Query("class_name"), focusClassID, pageSize)
+		if err != nil {
+			fail(c, 500, "locate class page failed")
+			return
+		}
+		focusResult = &located
+		if located.Found {
+			page = located.Page
+		}
+	}
 	classes, total, err := h.classes.ListClasses(c.Query("grade"), c.Query("major_name"), c.Query("class_name"), page, pageSize)
 	if err != nil {
 		fail(c, 500, "list classes failed")
 		return
 	}
-	ok(c, pageResult[model.Class]{Items: classes, Page: page, PageSize: pageSize, Total: total})
+	result := pageResult[model.Class]{Items: classes, Page: page, PageSize: pageSize, Total: total}
+	if focusResult != nil {
+		result.FocusFound = &focusResult.Found
+		if focusResult.Found {
+			result.FocusPage = &focusResult.Page
+			result.FocusRowKey = &focusResult.RowKey
+		}
+	}
+	ok(c, result)
 }
 
 func (h *apiHandler) listClassOptions(c *gin.Context) {

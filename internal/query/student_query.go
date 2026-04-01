@@ -47,19 +47,8 @@ func NewStudentQuery(db *gorm.DB) *StudentQuery {
 	return &StudentQuery{db: db}
 }
 
-func (q *StudentQuery) ListStudents(input ListStudentsInput) ([]StudentItem, int64, error) {
+func (q *StudentQuery) listStudentsBase(input ListStudentsInput) *gorm.DB {
 	base := q.db.Table("student").
-		Select(`
-			student.id,
-			student.class_id,
-			student.student_no AS student_id,
-			student.student_name AS real_name,
-			class.class_name,
-			class.grade,
-			class.major_name,
-			student.created_at,
-			student.updated_at
-		`).
 		Joins("LEFT JOIN class ON class.id = student.class_id").
 		Where("student.status = 1 AND (class.status = 1 OR student.class_id IS NULL)")
 
@@ -88,6 +77,23 @@ func (q *StudentQuery) ListStudents(input ListStudentsInput) ([]StudentItem, int
 		base = base.Where("COALESCE(class.class_name, '') LIKE ?", "%"+value+"%")
 	}
 
+	return base
+}
+
+func (q *StudentQuery) ListStudents(input ListStudentsInput) ([]StudentItem, int64, error) {
+	base := q.listStudentsBase(input).
+		Select(`
+			student.id,
+			student.class_id,
+			student.student_no AS student_id,
+			student.student_name AS real_name,
+			class.class_name,
+			class.grade,
+			class.major_name,
+			student.created_at,
+			student.updated_at
+		`)
+
 	var total int64
 	if err := base.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -100,6 +106,39 @@ func (q *StudentQuery) ListStudents(input ListStudentsInput) ([]StudentItem, int
 		Limit(input.PageSize).
 		Scan(&items).Error
 	return items, total, err
+}
+
+func (q *StudentQuery) LocateStudentPage(input ListStudentsInput, focusStudentID uint64, pageSize int) (FocusPageResult, error) {
+	base := q.listStudentsBase(input)
+
+	var target struct {
+		ID        uint64 `gorm:"column:id"`
+		StudentNo string `gorm:"column:student_no"`
+	}
+	if err := base.Select("student.id, student.student_no").
+		Where("student.id = ?", focusStudentID).
+		Take(&target).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return FocusPageResult{}, nil
+		}
+		return FocusPageResult{}, err
+	}
+
+	var rowNo int64
+	if err := q.listStudentsBase(input).
+		Where("(student.student_no < ?) OR (student.student_no = ? AND student.id <= ?)", target.StudentNo, target.StudentNo, target.ID).
+		Count(&rowNo).Error; err != nil {
+		return FocusPageResult{}, err
+	}
+	if rowNo <= 0 {
+		return FocusPageResult{}, nil
+	}
+
+	return FocusPageResult{
+		Found:  true,
+		Page:   int((rowNo-1)/int64(pageSize)) + 1,
+		RowKey: target.ID,
+	}, nil
 }
 
 func (q *StudentQuery) GetStudent(id uint64) (StudentItem, error) {

@@ -317,6 +317,10 @@ func (s *AttendanceService) GetAttendanceSessionPage(sessionID uint64, studentID
 	return lesson, course, records, total, nil
 }
 
+func (s *AttendanceService) LocateAttendanceSessionRecordPage(sessionID uint64, studentID, realName, className, status string, focusStudentID uint64, pageSize int) (query.FocusPageResult, error) {
+	return s.attendance.LocateAttendanceSessionRecordPage(sessionID, studentID, realName, className, status, focusStudentID, pageSize)
+}
+
 func (s *AttendanceService) GetAttendanceSessionForClass(sessionID uint64, classID *uint64) (model.CourseGroupLesson, model.Course, []query.AttendanceRecordItem, error) {
 	var lesson model.CourseGroupLesson
 	if err := s.db.First(&lesson, sessionID).Error; err != nil {

@@ -49,6 +49,21 @@ func (s *StudentService) ListStudents(input ListStudentsInput) ([]query.StudentI
 	})
 }
 
+func (s *StudentService) LocateStudentPage(input ListStudentsInput, focusStudentID uint64) (query.FocusPageResult, error) {
+	if input.PageSize <= 0 {
+		input.PageSize = 20
+	}
+	return s.students.LocateStudentPage(query.ListStudentsInput{
+		Page:      input.Page,
+		PageSize:  input.PageSize,
+		ClassID:   input.ClassID,
+		Keyword:   input.Keyword,
+		StudentID: input.StudentID,
+		RealName:  input.RealName,
+		ClassName: input.ClassName,
+	}, focusStudentID, input.PageSize)
+}
+
 func (s *StudentService) CreateStudent(student model.Student) (query.StudentItem, error) {
 	student.StudentNo = strings.TrimSpace(student.StudentNo)
 	student.StudentName = strings.TrimSpace(student.StudentName)

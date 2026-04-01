@@ -380,7 +380,29 @@ func (h *apiHandler) adminGetAttendanceSession(c *gin.Context) {
 		fail(c, 400, err.Error())
 		return
 	}
-	page, pageSize := parsePage(c)
+	requestPage, pageSize := parsePage(c)
+	page := requestPage
+	focusStudentID, _ := parseUintQuery(c, "focus_student_ref_id")
+	var focusResult *query.FocusPageResult
+	if focusStudentID > 0 {
+		located, err := h.attendance.LocateAttendanceSessionRecordPage(
+			id,
+			c.Query("student_id"),
+			c.Query("real_name"),
+			c.Query("class_name"),
+			c.Query("status"),
+			focusStudentID,
+			pageSize,
+		)
+		if err != nil {
+			fail(c, 500, "locate attendance session page failed")
+			return
+		}
+		focusResult = &located
+		if located.Found {
+			page = located.Page
+		}
+	}
 	session, course, records, total, err := h.attendance.GetAttendanceSessionPage(
 		id,
 		c.Query("student_id"),
@@ -399,14 +421,25 @@ func (h *apiHandler) adminGetAttendanceSession(c *gin.Context) {
 		}
 		return
 	}
-	ok(c, gin.H{
+	result := gin.H{
 		"course_group_lesson": session,
 		"course":              course,
 		"attendance_records":  records,
 		"page":                page,
 		"page_size":           pageSize,
 		"total":               total,
-	})
+	}
+	if focusResult != nil {
+		result["focus_found"] = focusResult.Found
+		if focusResult.Found {
+			result["focus_page"] = focusResult.Page
+			result["focus_row_key"] = focusResult.RowKey
+		} else {
+			result["focus_page"] = nil
+			result["focus_row_key"] = nil
+		}
+	}
+	ok(c, result)
 }
 
 func (h *apiHandler) adminUpsertAttendanceStatus(c *gin.Context) {
