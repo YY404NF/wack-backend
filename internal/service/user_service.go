@@ -48,10 +48,10 @@ func NewUserService(db *gorm.DB) *UserService {
 func (s *UserService) ListUsers(input ListUsersInput) ([]model.User, int64, error) {
 	query := s.db.Model(&model.User{}).Joins("LEFT JOIN class ON class.id = user.managed_class_id")
 	if input.Role != "" {
-		query = query.Where("role = ?", input.Role)
+		query = query.Where("user.role = ?", input.Role)
 	}
 	if input.Status != "" {
-		query = query.Where("status = ?", input.Status)
+		query = query.Where("user.status = ?", input.Status)
 	}
 	if value := strings.TrimSpace(input.LoginID); value != "" {
 		query = query.Where("user.login_id LIKE ?", "%"+value+"%")

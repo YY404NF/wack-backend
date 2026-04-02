@@ -123,11 +123,7 @@ func (q *CourseQuery) courseListBaseQuery(term, grade, teacher, keyword, classNa
 		queryDB = queryDB.Where("term.name = ?", term)
 	}
 	if grade != "" {
-		gradeValue, err := strconv.Atoi(grade)
-		if err != nil {
-			return nil, nil
-		}
-		queryDB = queryDB.Where("course.grade = ?", gradeValue)
+		queryDB = queryDB.Where("CAST(course.grade AS TEXT) LIKE ?", "%"+grade+"%")
 	}
 	if teacher != "" {
 		queryDB = queryDB.Where("course.teacher_name LIKE ?", "%"+teacher+"%")

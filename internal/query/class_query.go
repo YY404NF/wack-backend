@@ -38,7 +38,7 @@ func (q *ClassQuery) classListFilterBase(grade, majorName, className string) *go
 	base := q.db.Table("class").Where("class.status = 1")
 
 	if grade = strings.TrimSpace(grade); grade != "" {
-		base = base.Where("CAST(class.grade AS TEXT) = ?", grade)
+		base = base.Where("CAST(class.grade AS TEXT) LIKE ?", "%"+grade+"%")
 	}
 	if majorName = strings.TrimSpace(majorName); majorName != "" {
 		base = base.Where("class.major_name LIKE ?", "%"+majorName+"%")
