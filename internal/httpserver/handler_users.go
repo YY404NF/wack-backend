@@ -1,16 +1,20 @@
 package httpserver
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 
 	"wack-backend/internal/httpserver/dto"
 	"wack-backend/internal/model"
+	"wack-backend/internal/query"
 	"wack-backend/internal/service"
 )
 
 func (h *apiHandler) listUsers(c *gin.Context) {
-	page, pageSize := parsePage(c)
-	users, total, err := h.users.ListUsers(service.ListUsersInput{
+	requestPage, pageSize := parsePage(c)
+	page := requestPage
+	listInput := service.ListUsersInput{
 		Page:             page,
 		PageSize:         pageSize,
 		Role:             c.Query("role"),
@@ -19,13 +23,35 @@ func (h *apiHandler) listUsers(c *gin.Context) {
 		LoginID:          c.Query("login_id"),
 		RealName:         c.Query("real_name"),
 		ManagedClassName: c.Query("managed_class_name"),
-	})
+	}
+	focusLoginID := strings.TrimSpace(c.Query("focus_login_id"))
+	var focusResult *query.FocusPageResult
+	if focusLoginID != "" {
+		located, err := h.users.LocateUserPage(listInput, focusLoginID)
+		if err != nil {
+			fail(c, 500, "locate user page failed")
+			return
+		}
+		focusResult = &located
+		if located.Found {
+			page = located.Page
+			listInput.Page = page
+		}
+	}
+	users, total, err := h.users.ListUsers(listInput)
 	if err != nil {
 		fail(c, 500, "list users failed")
 		return
 	}
 
-	ok(c, pageResult[model.User]{Items: users, Page: page, PageSize: pageSize, Total: total})
+	result := pageResult[model.User]{Items: users, Page: page, PageSize: pageSize, Total: total}
+	if focusResult != nil {
+		result.FocusFound = &focusResult.Found
+		if focusResult.Found {
+			result.FocusPage = &focusResult.Page
+		}
+	}
+	ok(c, result)
 }
 
 func (h *apiHandler) createUser(c *gin.Context) {

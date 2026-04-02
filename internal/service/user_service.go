@@ -2,11 +2,13 @@ package service
 
 import (
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
 	"wack-backend/internal/model"
+	"wack-backend/internal/query"
 )
 
 type UserService struct {
@@ -45,7 +47,7 @@ func NewUserService(db *gorm.DB) *UserService {
 	return &UserService{db: db}
 }
 
-func (s *UserService) ListUsers(input ListUsersInput) ([]model.User, int64, error) {
+func (s *UserService) listUsersBase(input ListUsersInput) *gorm.DB {
 	query := s.db.Model(&model.User{}).Joins("LEFT JOIN class ON class.id = user.managed_class_id")
 	if input.Role != "" {
 		query = query.Where("user.role = ?", input.Role)
@@ -66,16 +68,60 @@ func (s *UserService) ListUsers(input ListUsersInput) ([]model.User, int64, erro
 		query = query.Where("user.login_id LIKE ? OR user.real_name LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
 	}
 
+	return query
+}
+
+func (s *UserService) ListUsers(input ListUsersInput) ([]model.User, int64, error) {
+	query := s.listUsersBase(input)
+
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	var users []model.User
-	if err := query.Order("user.created_at DESC").Offset((input.Page - 1) * input.PageSize).Limit(input.PageSize).Find(&users).Error; err != nil {
+	if err := query.Order("user.created_at DESC, user.id DESC").Offset((input.Page - 1) * input.PageSize).Limit(input.PageSize).Find(&users).Error; err != nil {
 		return nil, 0, err
 	}
 	return users, total, nil
+}
+
+func (s *UserService) LocateUserPage(input ListUsersInput, focusLoginID string) (query.FocusPageResult, error) {
+	focusLoginID = strings.TrimSpace(focusLoginID)
+	if focusLoginID == "" {
+		return query.FocusPageResult{}, nil
+	}
+
+	base := s.listUsersBase(input)
+
+	var target struct {
+		ID        uint64    `gorm:"column:id"`
+		CreatedAt time.Time `gorm:"column:created_at"`
+	}
+	if err := base.Select("user.id, user.created_at").
+		Where("user.login_id = ?", focusLoginID).
+		Take(&target).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return query.FocusPageResult{}, nil
+		}
+		return query.FocusPageResult{}, err
+	}
+
+	var rowNo int64
+	if err := s.listUsersBase(input).
+		Where("user.created_at > ? OR (user.created_at = ? AND user.id >= ?)", target.CreatedAt, target.CreatedAt, target.ID).
+		Count(&rowNo).Error; err != nil {
+		return query.FocusPageResult{}, err
+	}
+	if rowNo <= 0 {
+		return query.FocusPageResult{}, nil
+	}
+
+	return query.FocusPageResult{
+		Found:  true,
+		Page:   int((rowNo-1)/int64(input.PageSize)) + 1,
+		RowKey: target.ID,
+	}, nil
 }
 
 func (s *UserService) CreateUser(input CreateUserInput) (model.User, error) {
