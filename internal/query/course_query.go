@@ -11,22 +11,23 @@ import (
 )
 
 type CourseCalendarItem struct {
-	ID            uint64   `json:"id"`
-	CourseGroupID uint64   `json:"course_group_id"`
-	CourseID      uint64   `json:"course_id"`
-	SessionNo     int      `json:"session_no"`
-	Term          string   `json:"term"`
-	WeekNo        int      `json:"week_no"`
-	Weekday       int      `json:"weekday"`
-	Section       int      `json:"section"`
-	BuildingName  string   `json:"building_name"`
-	RoomName      string   `json:"room_name"`
-	CourseName    string   `json:"course_name"`
-	TeacherName   string   `json:"teacher_name"`
-	ClassNames    []string `gorm:"-" json:"class_names"`
-	ClassIDs      []uint64 `gorm:"-" json:"class_ids"`
-	Grades        []int    `gorm:"-" json:"grades"`
-	MajorNames    []string `gorm:"-" json:"major_names"`
+	ID                  uint64   `json:"id"`
+	CourseGroupID       uint64   `json:"course_group_id"`
+	CourseID            uint64   `json:"course_id"`
+	SessionNo           int      `json:"session_no"`
+	Term                string   `json:"term"`
+	WeekNo              int      `json:"week_no"`
+	Weekday             int      `json:"weekday"`
+	Section             int      `json:"section"`
+	BuildingName        string   `json:"building_name"`
+	RoomName            string   `json:"room_name"`
+	CourseName          string   `json:"course_name"`
+	TeacherName         string   `json:"teacher_name"`
+	HasAttendanceRecord bool     `json:"has_attendance_record"`
+	ClassNames          []string `gorm:"-" json:"class_names"`
+	ClassIDs            []uint64 `gorm:"-" json:"class_ids"`
+	Grades              []int    `gorm:"-" json:"grades"`
+	MajorNames          []string `gorm:"-" json:"major_names"`
 }
 
 type CourseListItem struct {
@@ -470,7 +471,12 @@ func (q *CourseQuery) CourseCalendar(weekNo, term string) ([]CourseCalendarItem,
 			course_group_lesson.building_name,
 			course_group_lesson.room_name,
 			course.course_name,
-			course.teacher_name`).
+			course.teacher_name,
+			EXISTS (
+				SELECT 1
+				FROM attendance_record
+				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
+			) AS has_attendance_record`).
 		Order("course_group_lesson.week_no, course_group_lesson.weekday, course_group_lesson.section, session_no").
 		Scan(&items).Error
 	if err != nil || len(items) == 0 {
