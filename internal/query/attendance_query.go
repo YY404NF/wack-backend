@@ -139,6 +139,8 @@ type AttendanceRecordItem struct {
 	Status              *int       `json:"status"`
 	StatusSetByUserID   *uint64    `json:"status_set_by_user_id"`
 	StatusSetAt         *time.Time `json:"status_set_at"`
+	OperatorName        string     `json:"operator_name"`
+	OperatedAt          *time.Time `json:"operated_at"`
 }
 
 type AttendanceClassGroupItem struct {
@@ -638,15 +640,16 @@ func (q *AttendanceQuery) AvailableCourseGroupLessonsForClass(termID uint64, wee
 }
 
 func (q *AttendanceQuery) AttendanceSessionRecords(sessionID uint64) ([]AttendanceRecordItem, error) {
-	items, _, err := q.AttendanceSessionRecordPage(sessionID, "", "", "", "", 1, 1000000)
+	items, _, err := q.AttendanceSessionRecordPage(sessionID, "", "", "", "", "", "", 1, 1000000)
 	return items, err
 }
 
-func (q *AttendanceQuery) attendanceSessionRecordBase(sessionID uint64, studentID, realName, className, status string) *gorm.DB {
+func (q *AttendanceQuery) attendanceSessionRecordBase(sessionID uint64, studentID, realName, className, status, operatorName, operatedDate string) *gorm.DB {
 	base := q.db.Table("course_group_student").
 		Joins("JOIN course_group_lesson ON course_group_lesson.course_group_id = course_group_student.course_group_id AND course_group_lesson.id = ?", sessionID).
 		Joins("JOIN student ON student.id = course_group_student.student_id").
 		Joins("LEFT JOIN attendance_record ON attendance_record.course_group_lesson_id = course_group_lesson.id AND attendance_record.student_id = course_group_student.student_id").
+		Joins("LEFT JOIN user AS operator_user ON operator_user.id = attendance_record.updated_by_user_id").
 		Joins("LEFT JOIN class ON class.id = course_group_student.class_id").
 		Where("course_group_student.status = 1 AND student.status = 1")
 	if studentID != "" {
@@ -664,12 +667,18 @@ func (q *AttendanceQuery) attendanceSessionRecordBase(sessionID uint64, studentI
 	case "0", "1", "2", "3":
 		base = base.Where("attendance_record.attendance_status = ?", status)
 	}
+	if operatorName != "" {
+		base = base.Where("operator_user.real_name LIKE ?", "%"+operatorName+"%")
+	}
+	if operatedDate != "" {
+		base = base.Where("DATE(attendance_record.updated_at) = ?", operatedDate)
+	}
 	return base
 }
 
-func (q *AttendanceQuery) AttendanceSessionRecordPage(sessionID uint64, studentID, realName, className, status string, page, pageSize int) ([]AttendanceRecordItem, int64, error) {
+func (q *AttendanceQuery) AttendanceSessionRecordPage(sessionID uint64, studentID, realName, className, status, operatorName, operatedDate string, page, pageSize int) ([]AttendanceRecordItem, int64, error) {
 	var records []AttendanceRecordItem
-	base := q.attendanceSessionRecordBase(sessionID, studentID, realName, className, status)
+	base := q.attendanceSessionRecordBase(sessionID, studentID, realName, className, status, operatorName, operatedDate)
 
 	var total int64
 	if err := q.db.Table("(?) AS attendance_records", base).Count(&total).Error; err != nil {
@@ -686,7 +695,9 @@ func (q *AttendanceQuery) AttendanceSessionRecordPage(sessionID uint64, studentI
 			COALESCE(class.class_name, '') AS class_name,
 			attendance_record.attendance_status AS status,
 			attendance_record.updated_by_user_id AS status_set_by_user_id,
-			attendance_record.updated_at AS status_set_at
+			attendance_record.updated_at AS status_set_at,
+			COALESCE(operator_user.real_name, '') AS operator_name,
+			attendance_record.updated_at AS operated_at
 		`).
 		Order("COALESCE(class.class_name, '其他学生') ASC, student.student_no ASC, student.id ASC").
 		Offset((page - 1) * pageSize).
@@ -695,8 +706,8 @@ func (q *AttendanceQuery) AttendanceSessionRecordPage(sessionID uint64, studentI
 	return records, total, err
 }
 
-func (q *AttendanceQuery) LocateAttendanceSessionRecordPage(sessionID uint64, studentID, realName, className, status string, focusStudentID uint64, pageSize int) (FocusPageResult, error) {
-	base := q.attendanceSessionRecordBase(sessionID, studentID, realName, className, status)
+func (q *AttendanceQuery) LocateAttendanceSessionRecordPage(sessionID uint64, studentID, realName, className, status, operatorName, operatedDate string, focusStudentID uint64, pageSize int) (FocusPageResult, error) {
+	base := q.attendanceSessionRecordBase(sessionID, studentID, realName, className, status, operatorName, operatedDate)
 
 	var target struct {
 		ID            uint64 `gorm:"column:id"`
@@ -717,7 +728,7 @@ func (q *AttendanceQuery) LocateAttendanceSessionRecordPage(sessionID uint64, st
 	}
 
 	var rowNo int64
-	if err := q.attendanceSessionRecordBase(sessionID, studentID, realName, className, status).
+	if err := q.attendanceSessionRecordBase(sessionID, studentID, realName, className, status, operatorName, operatedDate).
 		Where(`
 			COALESCE(class.class_name, '其他学生') < ?
 			OR (COALESCE(class.class_name, '其他学生') = ? AND student.student_no < ?)

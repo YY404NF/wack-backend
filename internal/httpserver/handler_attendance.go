@@ -391,6 +391,8 @@ func (h *apiHandler) adminGetAttendanceSession(c *gin.Context) {
 			c.Query("real_name"),
 			c.Query("class_name"),
 			c.Query("status"),
+			c.Query("operator_name"),
+			c.Query("operated_date"),
 			focusStudentID,
 			pageSize,
 		)
@@ -409,6 +411,8 @@ func (h *apiHandler) adminGetAttendanceSession(c *gin.Context) {
 		c.Query("real_name"),
 		c.Query("class_name"),
 		c.Query("status"),
+		c.Query("operator_name"),
+		c.Query("operated_date"),
 		page,
 		pageSize,
 	)

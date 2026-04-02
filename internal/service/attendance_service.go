@@ -293,7 +293,7 @@ func (s *AttendanceService) GetAttendanceSession(sessionID uint64) (model.Course
 	return s.GetAttendanceSessionForClass(sessionID, nil)
 }
 
-func (s *AttendanceService) GetAttendanceSessionPage(sessionID uint64, studentID, realName, className, status string, page, pageSize int) (model.CourseGroupLesson, model.Course, []query.AttendanceRecordItem, int64, error) {
+func (s *AttendanceService) GetAttendanceSessionPage(sessionID uint64, studentID, realName, className, status, operatorName, operatedDate string, page, pageSize int) (model.CourseGroupLesson, model.Course, []query.AttendanceRecordItem, int64, error) {
 	var lesson model.CourseGroupLesson
 	if err := s.db.First(&lesson, sessionID).Error; err != nil {
 		return model.CourseGroupLesson{}, model.Course{}, nil, 0, ErrCourseGroupLessonNotFound
@@ -309,7 +309,7 @@ func (s *AttendanceService) GetAttendanceSessionPage(sessionID uint64, studentID
 		return model.CourseGroupLesson{}, model.Course{}, nil, 0, ErrCourseNotFound
 	}
 
-	records, total, err := s.attendance.AttendanceSessionRecordPage(lesson.ID, studentID, realName, className, status, page, pageSize)
+	records, total, err := s.attendance.AttendanceSessionRecordPage(lesson.ID, studentID, realName, className, status, operatorName, operatedDate, page, pageSize)
 	if err != nil {
 		return model.CourseGroupLesson{}, model.Course{}, nil, 0, err
 	}
@@ -317,8 +317,8 @@ func (s *AttendanceService) GetAttendanceSessionPage(sessionID uint64, studentID
 	return lesson, course, records, total, nil
 }
 
-func (s *AttendanceService) LocateAttendanceSessionRecordPage(sessionID uint64, studentID, realName, className, status string, focusStudentID uint64, pageSize int) (query.FocusPageResult, error) {
-	return s.attendance.LocateAttendanceSessionRecordPage(sessionID, studentID, realName, className, status, focusStudentID, pageSize)
+func (s *AttendanceService) LocateAttendanceSessionRecordPage(sessionID uint64, studentID, realName, className, status, operatorName, operatedDate string, focusStudentID uint64, pageSize int) (query.FocusPageResult, error) {
+	return s.attendance.LocateAttendanceSessionRecordPage(sessionID, studentID, realName, className, status, operatorName, operatedDate, focusStudentID, pageSize)
 }
 
 func (s *AttendanceService) GetAttendanceSessionForClass(sessionID uint64, classID *uint64) (model.CourseGroupLesson, model.Course, []query.AttendanceRecordItem, error) {
