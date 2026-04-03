@@ -90,6 +90,7 @@ func mountCourseRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 	admin.DELETE("/courses/:id/groups/:group_id/students/:student_id", apiHandler.removeCourseGroupStudent)
 	admin.PUT("/courses/:id", apiHandler.updateCourse)
 	admin.DELETE("/courses/:id", apiHandler.deleteCourse)
+	admin.GET("/course-calendar-outline", apiHandler.adminCourseCalendarOutline)
 	admin.GET("/course-calendar", apiHandler.adminCourseCalendar)
 }
 

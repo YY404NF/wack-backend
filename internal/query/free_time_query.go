@@ -1,6 +1,8 @@
 package query
 
 import (
+	"strconv"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -63,7 +65,7 @@ func (q *FreeTimeQuery) List(term, loginID string, userID uint64, restrictToUser
 	return items, total, nil
 }
 
-func (q *FreeTimeQuery) Calendar(term string) ([]FreeTimeItem, error) {
+func (q *FreeTimeQuery) Calendar(term string, weekNo int) ([]FreeTimeItem, error) {
 	query := q.db.Table("user_free_time").
 		Select("user_free_time.id, term.name AS term, user_free_time.user_id, user.login_id, user.real_name, user_free_time.weekday, user_free_time.section, user_free_time.free_weeks, user_free_time.created_at, user_free_time.updated_at").
 		Joins("JOIN user ON user.id = user_free_time.user_id").
@@ -76,7 +78,48 @@ func (q *FreeTimeQuery) Calendar(term string) ([]FreeTimeItem, error) {
 	if err := query.Order("weekday, section, user.login_id").Scan(&items).Error; err != nil {
 		return nil, err
 	}
-	return items, nil
+	if weekNo <= 0 {
+		return items, nil
+	}
+	filtered := items[:0]
+	for _, item := range items {
+		if freeTimeContainsWeek(item.FreeWeeks, weekNo) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered, nil
+}
+
+func freeTimeContainsWeek(value string, weekNo int) bool {
+	if weekNo <= 0 {
+		return true
+	}
+	for _, chunk := range strings.Split(value, ",") {
+		part := strings.TrimSpace(chunk)
+		if part == "" {
+			continue
+		}
+		bounds := strings.SplitN(part, "-", 2)
+		start, err := strconv.Atoi(strings.TrimSpace(bounds[0]))
+		if err != nil {
+			continue
+		}
+		end := start
+		if len(bounds) == 2 {
+			parsedEnd, err := strconv.Atoi(strings.TrimSpace(bounds[1]))
+			if err != nil {
+				continue
+			}
+			end = parsedEnd
+		}
+		if start > end {
+			start, end = end, start
+		}
+		if weekNo >= start && weekNo <= end {
+			return true
+		}
+	}
+	return false
 }
 
 func (q *FreeTimeQuery) Editor(term, loginID string, userID uint64, restrictToUser bool) ([]FreeTimeEditorItem, error) {

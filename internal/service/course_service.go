@@ -484,6 +484,10 @@ func (s *CourseService) CourseCalendar(weekNo, term string) ([]query.CourseCalen
 	return s.courses.CourseCalendar(weekNo, term)
 }
 
+func (s *CourseService) CourseCalendarOutline(term string) ([]query.CourseCalendarOutlineItem, error) {
+	return s.courses.CourseCalendarOutline(strings.TrimSpace(term))
+}
+
 func ensureCourseExists(db *gorm.DB, courseID uint64) error {
 	var count int64
 	if err := db.Model(&model.Course{}).Where("id = ?", courseID).Count(&count).Error; err != nil {

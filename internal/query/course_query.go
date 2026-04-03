@@ -30,6 +30,18 @@ type CourseCalendarItem struct {
 	MajorNames          []string `gorm:"-" json:"major_names"`
 }
 
+type CourseCalendarOutlineItem struct {
+	CourseGroupID uint64   `json:"course_group_id"`
+	CourseID      uint64   `json:"course_id"`
+	Weekday       int      `json:"weekday"`
+	Section       int      `json:"section"`
+	CourseName    string   `json:"course_name"`
+	TeacherName   string   `json:"teacher_name"`
+	WeekNos       []int    `gorm:"-" json:"week_nos"`
+	Locations     []string `gorm:"-" json:"locations"`
+	ClassNames    []string `gorm:"-" json:"class_names"`
+}
+
 type CourseListItem struct {
 	model.Course
 	ClassNames []string `gorm:"-" json:"class_names"`
@@ -90,6 +102,18 @@ type courseCalendarGroupClassRow struct {
 	ClassName     string
 	Grade         int
 	MajorName     string
+}
+
+type courseCalendarOutlineRow struct {
+	CourseGroupID uint64
+	CourseID      uint64
+	Weekday       int
+	Section       int
+	WeekNo        int
+	BuildingName  string
+	RoomName      string
+	CourseName    string
+	TeacherName   string
 }
 
 type courseGroupClassRow struct {
@@ -483,36 +507,9 @@ func (q *CourseQuery) CourseCalendar(weekNo, term string) ([]CourseCalendarItem,
 		return items, err
 	}
 
-	courseGroupIDs := make([]uint64, 0, len(items))
-	seenCourseGroupIDs := make(map[uint64]struct{}, len(items))
-	for _, item := range items {
-		if _, exists := seenCourseGroupIDs[item.CourseGroupID]; exists {
-			continue
-		}
-		seenCourseGroupIDs[item.CourseGroupID] = struct{}{}
-		courseGroupIDs = append(courseGroupIDs, item.CourseGroupID)
-	}
-
-	var classRows []courseCalendarGroupClassRow
-	if err := q.db.Table("course_group_student").
-		Select("DISTINCT course_group.id AS course_group_id, class.id AS class_id, class.class_name, class.grade, class.major_name").
-		Joins("JOIN course_group ON course_group.id = course_group_student.course_group_id").
-		Joins("JOIN class ON class.id = course_group_student.class_id").
-		Where("course_group.id IN ? AND course_group.status = 1 AND course_group_student.status = 1 AND course_group_student.class_id IS NOT NULL", courseGroupIDs).
-		Order("class.grade DESC, class.class_name ASC").
-		Scan(&classRows).Error; err != nil {
+	classNamesByCourseGroupID, classIDsByCourseGroupID, gradesByCourseGroupID, majorNamesByCourseGroupID, err := q.courseCalendarGroupClassMaps(courseGroupIDsFromCalendarItems(items))
+	if err != nil {
 		return nil, err
-	}
-
-	classNamesByCourseGroupID := make(map[uint64][]string, len(courseGroupIDs))
-	classIDsByCourseGroupID := make(map[uint64][]uint64, len(courseGroupIDs))
-	gradesByCourseGroupID := make(map[uint64][]int, len(courseGroupIDs))
-	majorNamesByCourseGroupID := make(map[uint64][]string, len(courseGroupIDs))
-	for _, row := range classRows {
-		classNamesByCourseGroupID[row.CourseGroupID] = append(classNamesByCourseGroupID[row.CourseGroupID], row.ClassName)
-		classIDsByCourseGroupID[row.CourseGroupID] = append(classIDsByCourseGroupID[row.CourseGroupID], row.ClassID)
-		gradesByCourseGroupID[row.CourseGroupID] = append(gradesByCourseGroupID[row.CourseGroupID], row.Grade)
-		majorNamesByCourseGroupID[row.CourseGroupID] = append(majorNamesByCourseGroupID[row.CourseGroupID], row.MajorName)
 	}
 
 	for index := range items {
@@ -523,6 +520,127 @@ func (q *CourseQuery) CourseCalendar(weekNo, term string) ([]CourseCalendarItem,
 	}
 
 	return items, nil
+}
+
+func (q *CourseQuery) CourseCalendarOutline(term string) ([]CourseCalendarOutlineItem, error) {
+	query := q.db.Table("course_group_lesson").
+		Joins("JOIN course_group ON course_group.id = course_group_lesson.course_group_id").
+		Joins("JOIN course ON course.id = course_group.course_id").
+		Joins("JOIN term ON term.id = course_group.term_id").
+		Where("course_group_lesson.status = 1 AND course_group.status = 1")
+	if term != "" {
+		query = query.Where("term.name = ?", term)
+	}
+
+	var rows []courseCalendarOutlineRow
+	if err := query.Select(`
+			course_group.id AS course_group_id,
+			course_group.course_id,
+			course_group_lesson.weekday,
+			course_group_lesson.section,
+			course_group_lesson.week_no,
+			course_group_lesson.building_name,
+			course_group_lesson.room_name,
+			course.course_name,
+			course.teacher_name`).
+		Order("course_group_lesson.weekday, course_group_lesson.section, course.course_name, course_group.id, course_group_lesson.week_no").
+		Scan(&rows).Error; err != nil || len(rows) == 0 {
+		return nil, err
+	}
+
+	classNamesByCourseGroupID, _, _, _, err := q.courseCalendarGroupClassMaps(courseGroupIDsFromOutlineRows(rows))
+	if err != nil {
+		return nil, err
+	}
+
+	grouped := make(map[string]*CourseCalendarOutlineItem, len(rows))
+	order := make([]string, 0, len(rows))
+	for _, row := range rows {
+		key := strconv.FormatUint(row.CourseGroupID, 10) + ":" + strconv.Itoa(row.Weekday) + ":" + strconv.Itoa(row.Section)
+		item, exists := grouped[key]
+		if !exists {
+			item = &CourseCalendarOutlineItem{
+				CourseGroupID: row.CourseGroupID,
+				CourseID:      row.CourseID,
+				Weekday:       row.Weekday,
+				Section:       row.Section,
+				CourseName:    row.CourseName,
+				TeacherName:   row.TeacherName,
+				ClassNames:    dedupeStrings(classNamesByCourseGroupID[row.CourseGroupID]),
+			}
+			grouped[key] = item
+			order = append(order, key)
+		}
+		item.WeekNos = append(item.WeekNos, row.WeekNo)
+		item.Locations = append(item.Locations, row.BuildingName+"-"+row.RoomName)
+	}
+
+	items := make([]CourseCalendarOutlineItem, 0, len(order))
+	for _, key := range order {
+		item := grouped[key]
+		item.WeekNos = dedupeInts(item.WeekNos)
+		sort.Ints(item.WeekNos)
+		item.Locations = dedupeStrings(item.Locations)
+		sort.Strings(item.Locations)
+		items = append(items, *item)
+	}
+	return items, nil
+}
+
+func courseGroupIDsFromCalendarItems(items []CourseCalendarItem) []uint64 {
+	ids := make([]uint64, 0, len(items))
+	seen := make(map[uint64]struct{}, len(items))
+	for _, item := range items {
+		if _, exists := seen[item.CourseGroupID]; exists {
+			continue
+		}
+		seen[item.CourseGroupID] = struct{}{}
+		ids = append(ids, item.CourseGroupID)
+	}
+	return ids
+}
+
+func courseGroupIDsFromOutlineRows(rows []courseCalendarOutlineRow) []uint64 {
+	ids := make([]uint64, 0, len(rows))
+	seen := make(map[uint64]struct{}, len(rows))
+	for _, row := range rows {
+		if _, exists := seen[row.CourseGroupID]; exists {
+			continue
+		}
+		seen[row.CourseGroupID] = struct{}{}
+		ids = append(ids, row.CourseGroupID)
+	}
+	return ids
+}
+
+func (q *CourseQuery) courseCalendarGroupClassMaps(courseGroupIDs []uint64) (map[uint64][]string, map[uint64][]uint64, map[uint64][]int, map[uint64][]string, error) {
+	classNamesByCourseGroupID := make(map[uint64][]string, len(courseGroupIDs))
+	classIDsByCourseGroupID := make(map[uint64][]uint64, len(courseGroupIDs))
+	gradesByCourseGroupID := make(map[uint64][]int, len(courseGroupIDs))
+	majorNamesByCourseGroupID := make(map[uint64][]string, len(courseGroupIDs))
+	if len(courseGroupIDs) == 0 {
+		return classNamesByCourseGroupID, classIDsByCourseGroupID, gradesByCourseGroupID, majorNamesByCourseGroupID, nil
+	}
+
+	var classRows []courseCalendarGroupClassRow
+	if err := q.db.Table("course_group_student").
+		Select("DISTINCT course_group.id AS course_group_id, class.id AS class_id, class.class_name, class.grade, class.major_name").
+		Joins("JOIN course_group ON course_group.id = course_group_student.course_group_id").
+		Joins("JOIN class ON class.id = course_group_student.class_id").
+		Where("course_group.id IN ? AND course_group.status = 1 AND course_group_student.status = 1 AND course_group_student.class_id IS NOT NULL", courseGroupIDs).
+		Order("class.grade DESC, class.class_name ASC").
+		Scan(&classRows).Error; err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	for _, row := range classRows {
+		classNamesByCourseGroupID[row.CourseGroupID] = append(classNamesByCourseGroupID[row.CourseGroupID], row.ClassName)
+		classIDsByCourseGroupID[row.CourseGroupID] = append(classIDsByCourseGroupID[row.CourseGroupID], row.ClassID)
+		gradesByCourseGroupID[row.CourseGroupID] = append(gradesByCourseGroupID[row.CourseGroupID], row.Grade)
+		majorNamesByCourseGroupID[row.CourseGroupID] = append(majorNamesByCourseGroupID[row.CourseGroupID], row.MajorName)
+	}
+
+	return classNamesByCourseGroupID, classIDsByCourseGroupID, gradesByCourseGroupID, majorNamesByCourseGroupID, nil
 }
 
 func dedupeStrings(values []string) []string {

@@ -77,7 +77,8 @@ func (h *apiHandler) adminAttendanceSessions(c *gin.Context) {
 }
 
 func (h *apiHandler) adminFreeTimeCalendar(c *gin.Context) {
-	items, err := h.freeTimes.FreeTimeCalendar(c.Query("term"))
+	weekNo, _ := strconv.Atoi(c.Query("week_no"))
+	items, err := h.freeTimes.FreeTimeCalendar(c.Query("term"), weekNo)
 	if err != nil {
 		fail(c, 500, "load free time calendar failed")
 		return

@@ -600,3 +600,12 @@ func (h *apiHandler) adminCourseCalendar(c *gin.Context) {
 	}
 	ok(c, items)
 }
+
+func (h *apiHandler) adminCourseCalendarOutline(c *gin.Context) {
+	items, err := h.courses.CourseCalendarOutline(c.Query("term"))
+	if err != nil {
+		fail(c, 500, "load course calendar outline failed")
+		return
+	}
+	ok(c, items)
+}

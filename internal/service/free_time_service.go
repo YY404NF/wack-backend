@@ -26,8 +26,8 @@ func (s *FreeTimeService) ListFreeTimeEditor(term, loginID string, currentUser m
 	return s.freeTimes.Editor(strings.TrimSpace(term), strings.TrimSpace(loginID), currentUser.ID, currentUser.Role == model.RoleStudent)
 }
 
-func (s *FreeTimeService) FreeTimeCalendar(term string) ([]query.FreeTimeItem, error) {
-	return s.freeTimes.Calendar(term)
+func (s *FreeTimeService) FreeTimeCalendar(term string, weekNo int) ([]query.FreeTimeItem, error) {
+	return s.freeTimes.Calendar(term, weekNo)
 }
 
 func (s *FreeTimeService) CreateFreeTime(termName string, userID uint64, weekday, section int, freeWeeks string) (model.UserFreeTime, error) {
