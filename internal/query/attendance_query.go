@@ -283,7 +283,7 @@ func (q *AttendanceQuery) OverviewCourseRankings(termName string) ([]OverviewCou
 			SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS arrived_count,
 			SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) AS total_count,
 			CASE
-				WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 0
+				WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 1
 				ELSE CAST(SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS REAL)
 					/ SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END)
 			END AS attendance_rate
@@ -308,7 +308,7 @@ func (q *AttendanceQuery) OverviewClassRankings(termName string) ([]OverviewClas
 			SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS arrived_count,
 			SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) AS total_count,
 			CASE
-				WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 0
+				WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 1
 				ELSE CAST(SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS REAL)
 					/ SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END)
 			END AS attendance_rate
@@ -333,16 +333,16 @@ func (q *AttendanceQuery) OverviewStudentRankings(termName string) ([]OverviewSt
 			SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS arrived_count,
 			SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) AS total_count,
 			CASE
-				WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 0
+				WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 1
 				ELSE CAST(SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS REAL)
 					/ SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END)
 			END AS attendance_rate
 		FROM attendance_record
 		JOIN student ON student.id = attendance_record.student_id
-		LEFT JOIN class ON class.id = attendance_record.class_id
+		LEFT JOIN class ON class.id = student.class_id
 		JOIN term ON term.id = attendance_record.term_id
 		WHERE term.name = ?
-		GROUP BY student.id, student.student_no, student.student_name, class.class_name
+		GROUP BY student.id, student.student_no, student.student_name
 		ORDER BY attendance_rate DESC, total_count DESC, student.student_no ASC
 	`, termName).Scan(&items).Error
 	return items, err
@@ -380,7 +380,7 @@ func (q *AttendanceQuery) OverviewRecentSessions(termName string) ([]OverviewRec
 			SUM(CASE WHEN attendance_record.attendance_status = 2 THEN 1 ELSE 0 END) AS absent_count,
 			SUM(CASE WHEN attendance_record.attendance_status = 3 THEN 1 ELSE 0 END) AS leave_count,
 			CASE
-				WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 0
+				WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 1
 				ELSE CAST(SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS REAL)
 					/ SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END)
 			END AS attendance_rate
