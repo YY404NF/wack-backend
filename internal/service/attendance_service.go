@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"time"
 
@@ -80,6 +81,25 @@ func overviewRateRange[T any](items []T, getter func(T) float64) (float64, float
 	return minRate, maxRate
 }
 
+func overviewDisplayRateKey(rate float64) int {
+	return int(math.Round(rate * 1000))
+}
+
+func assignDenseOverviewRanks[T any](items []T, getter func(T) float64, setter func(*T, int)) {
+	currentRank := 0
+	lastKey := 0
+	first := true
+	for index := range items {
+		key := overviewDisplayRateKey(getter(items[index]))
+		if first || key != lastKey {
+			currentRank += 1
+			lastKey = key
+			first = false
+		}
+		setter(&items[index], currentRank)
+	}
+}
+
 func (s *AttendanceService) AdminOverview() (query.AdminOverviewData, error) {
 	term, err := s.resolveActiveTerm(time.Now())
 	if err != nil {
@@ -100,14 +120,26 @@ func (s *AttendanceService) AdminOverview() (query.AdminOverviewData, error) {
 	if err != nil {
 		return query.AdminOverviewData{}, err
 	}
+	assignDenseOverviewRanks(courseRankings,
+		func(item query.OverviewCourseRankingItem) float64 { return item.AttendanceRate },
+		func(item *query.OverviewCourseRankingItem, rank int) { item.Rank = rank },
+	)
 	classRankings, err := s.attendance.OverviewClassRankings(term.Name)
 	if err != nil {
 		return query.AdminOverviewData{}, err
 	}
+	assignDenseOverviewRanks(classRankings,
+		func(item query.OverviewClassRankingItem) float64 { return item.AttendanceRate },
+		func(item *query.OverviewClassRankingItem, rank int) { item.Rank = rank },
+	)
 	studentRankings, err := s.attendance.OverviewStudentRankings(term.Name)
 	if err != nil {
 		return query.AdminOverviewData{}, err
 	}
+	assignDenseOverviewRanks(studentRankings,
+		func(item query.OverviewStudentRankingItem) float64 { return item.AttendanceRate },
+		func(item *query.OverviewStudentRankingItem, rank int) { item.Rank = rank },
+	)
 	recentSessions, err := s.attendance.OverviewRecentSessions(term.Name)
 	if err != nil {
 		return query.AdminOverviewData{}, err
@@ -190,6 +222,10 @@ func (s *AttendanceService) AdminOverviewSection(section string, offset, limit i
 		if err != nil {
 			return query.AdminOverviewData{}, err
 		}
+		assignDenseOverviewRanks(items,
+			func(item query.OverviewCourseRankingItem) float64 { return item.AttendanceRate },
+			func(item *query.OverviewCourseRankingItem, rank int) { item.Rank = rank },
+		)
 		if ascending {
 			items = reverseOverviewItems(items)
 		}
@@ -200,6 +236,10 @@ func (s *AttendanceService) AdminOverviewSection(section string, offset, limit i
 		if err != nil {
 			return query.AdminOverviewData{}, err
 		}
+		assignDenseOverviewRanks(items,
+			func(item query.OverviewClassRankingItem) float64 { return item.AttendanceRate },
+			func(item *query.OverviewClassRankingItem, rank int) { item.Rank = rank },
+		)
 		if ascending {
 			items = reverseOverviewItems(items)
 		}
@@ -210,6 +250,10 @@ func (s *AttendanceService) AdminOverviewSection(section string, offset, limit i
 		if err != nil {
 			return query.AdminOverviewData{}, err
 		}
+		assignDenseOverviewRanks(items,
+			func(item query.OverviewStudentRankingItem) float64 { return item.AttendanceRate },
+			func(item *query.OverviewStudentRankingItem, rank int) { item.Rank = rank },
+		)
 		if ascending {
 			items = reverseOverviewItems(items)
 		}

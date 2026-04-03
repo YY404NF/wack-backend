@@ -17,6 +17,7 @@ type AttendanceDashboardSummary struct {
 
 type OverviewCourseRankingItem struct {
 	CourseID       uint64  `json:"course_id"`
+	Rank           int     `json:"rank"`
 	CourseName     string  `json:"course_name"`
 	TeacherName    string  `json:"teacher_name"`
 	Grade          int     `json:"grade"`
@@ -27,6 +28,7 @@ type OverviewCourseRankingItem struct {
 
 type OverviewClassRankingItem struct {
 	ClassID        uint64  `json:"class_id"`
+	Rank           int     `json:"rank"`
 	ClassName      string  `json:"class_name"`
 	MajorName      string  `json:"major_name"`
 	Grade          int     `json:"grade"`
@@ -37,6 +39,7 @@ type OverviewClassRankingItem struct {
 
 type OverviewStudentRankingItem struct {
 	StudentRefID   uint64  `json:"student_ref_id"`
+	Rank           int     `json:"rank"`
 	StudentID      string  `json:"student_id"`
 	RealName       string  `json:"real_name"`
 	ClassName      string  `json:"class_name"`
