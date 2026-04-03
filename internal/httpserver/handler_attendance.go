@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,7 +23,20 @@ func (h *apiHandler) adminAttendanceDashboard(c *gin.Context) {
 }
 
 func (h *apiHandler) adminOverview(c *gin.Context) {
-	result, err := h.attendance.AdminOverview()
+	section := c.Query("section")
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+	order := c.Query("order")
+
+	var (
+		result query.AdminOverviewData
+		err    error
+	)
+	if section != "" {
+		result, err = h.attendance.AdminOverviewSection(section, offset, limit, order)
+	} else {
+		result, err = h.attendance.AdminOverview()
+	}
 	if err != nil {
 		fail(c, 500, "load admin overview failed")
 		return

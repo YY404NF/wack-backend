@@ -84,10 +84,28 @@ type OverviewRecentAbnormalItem struct {
 type AdminOverviewData struct {
 	Term                   string                       `json:"term"`
 	CourseRankings         []OverviewCourseRankingItem  `json:"course_rankings"`
+	CourseRankingsTotal    int64                        `json:"course_rankings_total"`
+	CourseRankingsHasMore  bool                         `json:"course_rankings_has_more"`
+	CourseRankingsMinRate  float64                      `json:"course_rankings_min_rate"`
+	CourseRankingsMaxRate  float64                      `json:"course_rankings_max_rate"`
 	ClassRankings          []OverviewClassRankingItem   `json:"class_rankings"`
+	ClassRankingsTotal     int64                        `json:"class_rankings_total"`
+	ClassRankingsHasMore   bool                         `json:"class_rankings_has_more"`
+	ClassRankingsMinRate   float64                      `json:"class_rankings_min_rate"`
+	ClassRankingsMaxRate   float64                      `json:"class_rankings_max_rate"`
 	StudentRankings        []OverviewStudentRankingItem `json:"student_rankings"`
+	StudentRankingsTotal   int64                        `json:"student_rankings_total"`
+	StudentRankingsHasMore bool                         `json:"student_rankings_has_more"`
+	StudentRankingsMinRate float64                      `json:"student_rankings_min_rate"`
+	StudentRankingsMaxRate float64                      `json:"student_rankings_max_rate"`
 	RecentSessions         []OverviewRecentSessionItem  `json:"recent_sessions"`
+	RecentSessionsTotal    int64                        `json:"recent_sessions_total"`
+	RecentSessionsHasMore  bool                         `json:"recent_sessions_has_more"`
+	RecentSessionsMinRate  float64                      `json:"recent_sessions_min_rate"`
+	RecentSessionsMaxRate  float64                      `json:"recent_sessions_max_rate"`
 	RecentAbnormalStudents []OverviewRecentAbnormalItem `json:"recent_abnormal_students"`
+	RecentAbnormalTotal    int64                        `json:"recent_abnormal_students_total"`
+	RecentAbnormalHasMore  bool                         `json:"recent_abnormal_students_has_more"`
 }
 
 type AttendanceResultItem struct {

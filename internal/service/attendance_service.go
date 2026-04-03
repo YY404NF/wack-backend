@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -30,6 +31,53 @@ type SubmitAttendanceStatusesResult struct {
 
 func NewAttendanceService(db *gorm.DB) *AttendanceService {
 	return &AttendanceService{db: db, attendance: query.NewAttendanceQuery(db), audit: newAuditLogger()}
+}
+
+func paginateOverviewItems[T any](items []T, offset, limit int) ([]T, int64, bool) {
+	total := len(items)
+	if limit <= 0 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= total {
+		return []T{}, int64(total), false
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return items[offset:end], int64(total), end < total
+}
+
+func reverseOverviewItems[T any](items []T) []T {
+	if len(items) == 0 {
+		return []T{}
+	}
+	reversed := make([]T, len(items))
+	for index := range items {
+		reversed[index] = items[len(items)-1-index]
+	}
+	return reversed
+}
+
+func overviewRateRange[T any](items []T, getter func(T) float64) (float64, float64) {
+	if len(items) == 0 {
+		return 0, 0
+	}
+	minRate := getter(items[0])
+	maxRate := minRate
+	for _, item := range items[1:] {
+		rate := getter(item)
+		if rate < minRate {
+			minRate = rate
+		}
+		if rate > maxRate {
+			maxRate = rate
+		}
+	}
+	return minRate, maxRate
 }
 
 func (s *AttendanceService) AdminOverview() (query.AdminOverviewData, error) {
@@ -70,13 +118,120 @@ func (s *AttendanceService) AdminOverview() (query.AdminOverviewData, error) {
 	}
 
 	return query.AdminOverviewData{
-		Term:                   term.Name,
-		CourseRankings:         courseRankings,
-		ClassRankings:          classRankings,
-		StudentRankings:        studentRankings,
-		RecentSessions:         recentSessions,
+		Term:                term.Name,
+		CourseRankings:      courseRankings,
+		CourseRankingsTotal: int64(len(courseRankings)),
+		CourseRankingsMinRate: func() float64 {
+			minRate, _ := overviewRateRange(courseRankings, func(item query.OverviewCourseRankingItem) float64 { return item.AttendanceRate })
+			return minRate
+		}(),
+		CourseRankingsMaxRate: func() float64 {
+			_, maxRate := overviewRateRange(courseRankings, func(item query.OverviewCourseRankingItem) float64 { return item.AttendanceRate })
+			return maxRate
+		}(),
+		ClassRankings:      classRankings,
+		ClassRankingsTotal: int64(len(classRankings)),
+		ClassRankingsMinRate: func() float64 {
+			minRate, _ := overviewRateRange(classRankings, func(item query.OverviewClassRankingItem) float64 { return item.AttendanceRate })
+			return minRate
+		}(),
+		ClassRankingsMaxRate: func() float64 {
+			_, maxRate := overviewRateRange(classRankings, func(item query.OverviewClassRankingItem) float64 { return item.AttendanceRate })
+			return maxRate
+		}(),
+		StudentRankings:      studentRankings,
+		StudentRankingsTotal: int64(len(studentRankings)),
+		StudentRankingsMinRate: func() float64 {
+			minRate, _ := overviewRateRange(studentRankings, func(item query.OverviewStudentRankingItem) float64 { return item.AttendanceRate })
+			return minRate
+		}(),
+		StudentRankingsMaxRate: func() float64 {
+			_, maxRate := overviewRateRange(studentRankings, func(item query.OverviewStudentRankingItem) float64 { return item.AttendanceRate })
+			return maxRate
+		}(),
+		RecentSessions:      recentSessions,
+		RecentSessionsTotal: int64(len(recentSessions)),
+		RecentSessionsMinRate: func() float64 {
+			minRate, _ := overviewRateRange(recentSessions, func(item query.OverviewRecentSessionItem) float64 { return item.AttendanceRate })
+			return minRate
+		}(),
+		RecentSessionsMaxRate: func() float64 {
+			_, maxRate := overviewRateRange(recentSessions, func(item query.OverviewRecentSessionItem) float64 { return item.AttendanceRate })
+			return maxRate
+		}(),
 		RecentAbnormalStudents: recentAbnormalStudents,
+		RecentAbnormalTotal:    int64(len(recentAbnormalStudents)),
 	}, nil
+}
+
+func (s *AttendanceService) AdminOverviewSection(section string, offset, limit int, order string) (query.AdminOverviewData, error) {
+	term, err := s.resolveActiveTerm(time.Now())
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return query.AdminOverviewData{
+				Term:                   "",
+				CourseRankings:         []query.OverviewCourseRankingItem{},
+				ClassRankings:          []query.OverviewClassRankingItem{},
+				StudentRankings:        []query.OverviewStudentRankingItem{},
+				RecentSessions:         []query.OverviewRecentSessionItem{},
+				RecentAbnormalStudents: []query.OverviewRecentAbnormalItem{},
+			}, nil
+		}
+		return query.AdminOverviewData{}, err
+	}
+
+	normalizedOrder := strings.ToLower(strings.TrimSpace(order))
+	ascending := normalizedOrder == "asc"
+
+	result := query.AdminOverviewData{Term: term.Name}
+	switch section {
+	case "course_rankings":
+		items, err := s.attendance.OverviewCourseRankings(term.Name)
+		if err != nil {
+			return query.AdminOverviewData{}, err
+		}
+		if ascending {
+			items = reverseOverviewItems(items)
+		}
+		result.CourseRankings, result.CourseRankingsTotal, result.CourseRankingsHasMore = paginateOverviewItems(items, offset, limit)
+		result.CourseRankingsMinRate, result.CourseRankingsMaxRate = overviewRateRange(items, func(item query.OverviewCourseRankingItem) float64 { return item.AttendanceRate })
+	case "class_rankings":
+		items, err := s.attendance.OverviewClassRankings(term.Name)
+		if err != nil {
+			return query.AdminOverviewData{}, err
+		}
+		if ascending {
+			items = reverseOverviewItems(items)
+		}
+		result.ClassRankings, result.ClassRankingsTotal, result.ClassRankingsHasMore = paginateOverviewItems(items, offset, limit)
+		result.ClassRankingsMinRate, result.ClassRankingsMaxRate = overviewRateRange(items, func(item query.OverviewClassRankingItem) float64 { return item.AttendanceRate })
+	case "student_rankings":
+		items, err := s.attendance.OverviewStudentRankings(term.Name)
+		if err != nil {
+			return query.AdminOverviewData{}, err
+		}
+		if ascending {
+			items = reverseOverviewItems(items)
+		}
+		result.StudentRankings, result.StudentRankingsTotal, result.StudentRankingsHasMore = paginateOverviewItems(items, offset, limit)
+		result.StudentRankingsMinRate, result.StudentRankingsMaxRate = overviewRateRange(items, func(item query.OverviewStudentRankingItem) float64 { return item.AttendanceRate })
+	case "recent_sessions":
+		items, err := s.attendance.OverviewRecentSessions(term.Name)
+		if err != nil {
+			return query.AdminOverviewData{}, err
+		}
+		result.RecentSessions, result.RecentSessionsTotal, result.RecentSessionsHasMore = paginateOverviewItems(items, offset, limit)
+		result.RecentSessionsMinRate, result.RecentSessionsMaxRate = overviewRateRange(items, func(item query.OverviewRecentSessionItem) float64 { return item.AttendanceRate })
+	case "recent_abnormal_students":
+		items, err := s.attendance.OverviewRecentAbnormalStudents(term.Name)
+		if err != nil {
+			return query.AdminOverviewData{}, err
+		}
+		result.RecentAbnormalStudents, result.RecentAbnormalTotal, result.RecentAbnormalHasMore = paginateOverviewItems(items, offset, limit)
+	default:
+		return s.AdminOverview()
+	}
+	return result, nil
 }
 
 func (s *AttendanceService) DashboardSummary(weekNo, term, courseID string) (query.AttendanceDashboardSummary, error) {
