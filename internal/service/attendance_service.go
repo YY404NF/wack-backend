@@ -242,8 +242,21 @@ func (s *AttendanceService) AttendanceResults(weekNo, courseID, status string, p
 	return s.attendance.AttendanceResults(weekNo, courseID, status, page, pageSize)
 }
 
-func (s *AttendanceService) AttendanceSessionSummaries(term, keyword, weekNo, weekday, section, classID, status string, includeUnchecked bool, page, pageSize int) ([]query.AttendanceSessionSummaryItem, int64, error) {
-	return s.attendance.AttendanceSessionSummaries(term, keyword, weekNo, weekday, section, classID, status, includeUnchecked, page, pageSize)
+func (s *AttendanceService) AttendanceSessionSummaries(input query.AttendanceSessionSummaryListInput) ([]query.AttendanceSessionSummaryItem, int64, error) {
+	input.Term = strings.TrimSpace(input.Term)
+	input.Keyword = strings.TrimSpace(input.Keyword)
+	input.LessonDate = strings.TrimSpace(input.LessonDate)
+	input.LessonDateFrom = strings.TrimSpace(input.LessonDateFrom)
+	input.LessonDateTo = strings.TrimSpace(input.LessonDateTo)
+	input.CourseName = strings.TrimSpace(input.CourseName)
+	input.TeacherName = strings.TrimSpace(input.TeacherName)
+	input.WeekNo = strings.TrimSpace(input.WeekNo)
+	input.Weekday = strings.TrimSpace(input.Weekday)
+	input.Section = strings.TrimSpace(input.Section)
+	input.ClassID = strings.TrimSpace(input.ClassID)
+	input.ClassName = strings.TrimSpace(input.ClassName)
+	input.Status = strings.TrimSpace(input.Status)
+	return s.attendance.AttendanceSessionSummaries(input)
 }
 
 func (s *AttendanceService) resolveActiveTerm(now time.Time) (model.Term, error) {

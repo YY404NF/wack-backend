@@ -1,6 +1,8 @@
 package query
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -128,6 +130,7 @@ type AttendanceSessionSummaryItem struct {
 	CourseGroupLessonID uint64 `json:"course_group_lesson_id"`
 	TermID              uint64 `json:"term_id"`
 	Term                string `json:"term"`
+	LessonDate          string `json:"lesson_date"`
 	CourseID            uint64 `json:"course_id"`
 	CourseName          string `json:"course_name"`
 	TeacherName         string `json:"teacher_name"`
@@ -144,6 +147,25 @@ type AttendanceSessionSummaryItem struct {
 	LateCount           int64  `json:"late_count"`
 	AbsentCount         int64  `json:"absent_count"`
 	LeaveCount          int64  `json:"leave_count"`
+}
+
+type AttendanceSessionSummaryListInput struct {
+	Term             string
+	Keyword          string
+	LessonDate       string
+	LessonDateFrom   string
+	LessonDateTo     string
+	CourseName       string
+	TeacherName      string
+	WeekNo           string
+	Weekday          string
+	Section          string
+	ClassID          string
+	ClassName        string
+	Status           string
+	IncludeUnchecked bool
+	Page             int
+	PageSize         int
 }
 
 type AttendanceRecordItem struct {
@@ -470,12 +492,14 @@ func (q *AttendanceQuery) AttendanceResults(weekNo, courseID, status string, pag
 	return items, total, nil
 }
 
-func (q *AttendanceQuery) AttendanceSessionSummaries(term, keyword, weekNo, weekday, section, classID, status string, includeUnchecked bool, page, pageSize int) ([]AttendanceSessionSummaryItem, int64, error) {
+func (q *AttendanceQuery) AttendanceSessionSummaries(input AttendanceSessionSummaryListInput) ([]AttendanceSessionSummaryItem, int64, error) {
+	lessonDateExpr := "date(term.term_start_date, printf('+%d days', (course_group_lesson.week_no - 1) * 7 + (course_group_lesson.weekday - 1)))"
 	base := q.db.Table("course_group_lesson").
 		Select(`
 			course_group_lesson.id AS course_group_lesson_id,
 			term.id AS term_id,
 			term.name AS term,
+			` + lessonDateExpr + ` AS lesson_date,
 			course.id AS course_id,
 			course.course_name,
 			course.teacher_name,
@@ -537,19 +561,28 @@ func (q *AttendanceQuery) AttendanceSessionSummaries(term, keyword, weekNo, week
 		Joins("JOIN course ON course.id = course_group.course_id").
 		Joins("JOIN term ON term.id = course.term_id").
 		Where("course_group_lesson.status = 1 AND course_group.status = 1 AND course.status = 1")
-	if term != "" {
-		base = base.Where("term.name = ?", term)
+	if value := strings.TrimSpace(input.Term); value != "" {
+		base = base.Where("term.name = ?", value)
 	}
-	if weekNo != "" {
-		base = base.Where("course_group_lesson.week_no = ?", weekNo)
+	if value := strings.TrimSpace(input.LessonDate); value != "" {
+		base = base.Where(fmt.Sprintf("%s = ?", lessonDateExpr), value)
 	}
-	if weekday != "" {
-		base = base.Where("course_group_lesson.weekday = ?", weekday)
+	if value := strings.TrimSpace(input.LessonDateFrom); value != "" {
+		base = base.Where(fmt.Sprintf("%s >= ?", lessonDateExpr), value)
 	}
-	if section != "" {
-		base = base.Where("course_group_lesson.section = ?", section)
+	if value := strings.TrimSpace(input.LessonDateTo); value != "" {
+		base = base.Where(fmt.Sprintf("%s <= ?", lessonDateExpr), value)
 	}
-	if classID != "" {
+	if value := strings.TrimSpace(input.WeekNo); value != "" {
+		base = base.Where("course_group_lesson.week_no = ?", value)
+	}
+	if value := strings.TrimSpace(input.Weekday); value != "" {
+		base = base.Where("course_group_lesson.weekday = ?", value)
+	}
+	if value := strings.TrimSpace(input.Section); value != "" {
+		base = base.Where("course_group_lesson.section = ?", value)
+	}
+	if value := strings.TrimSpace(input.ClassID); value != "" {
 		base = base.Where(`
 			EXISTS (
 				SELECT 1
@@ -559,16 +592,36 @@ func (q *AttendanceQuery) AttendanceSessionSummaries(term, keyword, weekNo, week
 				  AND course_group_student.class_id = ?
 				  AND course_group_student.status = 1
 			)
-		`, classID)
+		`, value)
 	}
-	if keyword != "" {
-		like := "%" + keyword + "%"
+	if value := strings.TrimSpace(input.ClassName); value != "" {
+		like := "%" + value + "%"
+		base = base.Where(`
+			EXISTS (
+				SELECT 1
+				FROM course_group_student
+				JOIN student ON student.id = course_group_student.student_id AND student.status = 1
+				LEFT JOIN class ON class.id = course_group_student.class_id
+				WHERE course_group_student.course_group_id = course_group_lesson.course_group_id
+				  AND course_group_student.status = 1
+				  AND COALESCE(class.class_name, '其他学生') LIKE ?
+			)
+		`, like)
+	}
+	if value := strings.TrimSpace(input.CourseName); value != "" {
+		base = base.Where("course.course_name LIKE ?", "%"+value+"%")
+	}
+	if value := strings.TrimSpace(input.TeacherName); value != "" {
+		base = base.Where("course.teacher_name LIKE ?", "%"+value+"%")
+	}
+	if value := strings.TrimSpace(input.Keyword); value != "" {
+		like := "%" + value + "%"
 		base = base.Where("course.course_name LIKE ? OR course.teacher_name LIKE ? OR CAST(course_group_lesson.id AS TEXT) LIKE ?", like, like, like)
 	}
-	if !includeUnchecked {
+	if !input.IncludeUnchecked {
 		base = base.Where("EXISTS (SELECT 1 FROM attendance_record WHERE attendance_record.course_group_lesson_id = course_group_lesson.id)")
 	}
-	if status != "" {
+	if value := strings.TrimSpace(input.Status); value != "" {
 		base = base.Where(`
 			EXISTS (
 				SELECT 1
@@ -576,7 +629,7 @@ func (q *AttendanceQuery) AttendanceSessionSummaries(term, keyword, weekNo, week
 				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
 				  AND attendance_record.attendance_status = ?
 			)
-		`, status)
+		`, value)
 	}
 
 	countQuery := q.db.Table("(?) AS attendance_sessions", base)
@@ -588,8 +641,8 @@ func (q *AttendanceQuery) AttendanceSessionSummaries(term, keyword, weekNo, week
 	var items []AttendanceSessionSummaryItem
 	err := q.db.Table("(?) AS attendance_sessions", base).
 		Order("term_id DESC, week_no DESC, weekday DESC, section DESC, course_group_lesson_id DESC").
-		Offset((page - 1) * pageSize).
-		Limit(pageSize).
+		Offset((input.Page - 1) * input.PageSize).
+		Limit(input.PageSize).
 		Scan(&items).Error
 	return items, total, err
 }

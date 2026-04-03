@@ -57,18 +57,24 @@ func (h *apiHandler) adminAttendanceResults(c *gin.Context) {
 func (h *apiHandler) adminAttendanceSessions(c *gin.Context) {
 	page, pageSize := parsePage(c)
 	includeUnchecked := c.Query("include_unchecked") == "1" || c.Query("include_unchecked") == "true"
-	items, total, err := h.attendance.AttendanceSessionSummaries(
-		c.Query("term"),
-		c.Query("keyword"),
-		c.Query("week_no"),
-		c.Query("weekday"),
-		c.Query("section"),
-		c.Query("class_id"),
-		c.Query("status"),
-		includeUnchecked,
-		page,
-		pageSize,
-	)
+	items, total, err := h.attendance.AttendanceSessionSummaries(query.AttendanceSessionSummaryListInput{
+		Term:             c.Query("term"),
+		Keyword:          c.Query("keyword"),
+		LessonDate:       c.Query("lesson_date"),
+		LessonDateFrom:   c.Query("lesson_date_from"),
+		LessonDateTo:     c.Query("lesson_date_to"),
+		CourseName:       c.Query("course_name"),
+		TeacherName:      c.Query("teacher_name"),
+		WeekNo:           c.Query("week_no"),
+		Weekday:          c.Query("weekday"),
+		Section:          c.Query("section"),
+		ClassID:          c.Query("class_id"),
+		ClassName:        c.Query("class_name"),
+		Status:           c.Query("status"),
+		IncludeUnchecked: includeUnchecked,
+		Page:             page,
+		PageSize:         pageSize,
+	})
 	if err != nil {
 		fail(c, 500, "load attendance sessions failed")
 		return
