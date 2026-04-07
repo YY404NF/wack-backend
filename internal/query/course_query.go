@@ -24,6 +24,7 @@ type CourseCalendarItem struct {
 	CourseName          string   `json:"course_name"`
 	TeacherName         string   `json:"teacher_name"`
 	HasAttendanceRecord bool     `json:"has_attendance_record"`
+	AttendanceRate      float64  `json:"attendance_rate"`
 	ClassNames          []string `gorm:"-" json:"class_names"`
 	ClassIDs            []uint64 `gorm:"-" json:"class_ids"`
 	Grades              []int    `gorm:"-" json:"grades"`
@@ -500,7 +501,16 @@ func (q *CourseQuery) CourseCalendar(weekNo, term string) ([]CourseCalendarItem,
 				SELECT 1
 				FROM attendance_record
 				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
-			) AS has_attendance_record`).
+			) AS has_attendance_record,
+			COALESCE((
+				SELECT CASE
+					WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 1
+					ELSE CAST(SUM(CASE WHEN attendance_record.attendance_status IN (0, 1) THEN 1 ELSE 0 END) AS REAL)
+						/ SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END)
+				END
+				FROM attendance_record
+				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
+			), 0) AS attendance_rate`).
 		Order("course_group_lesson.week_no, course_group_lesson.weekday, course_group_lesson.section, session_no").
 		Scan(&items).Error
 	if err != nil || len(items) == 0 {
