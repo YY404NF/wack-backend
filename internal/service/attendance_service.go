@@ -183,19 +183,11 @@ func (s *AttendanceService) AdminOverview() (query.AdminOverviewData, error) {
 			minRate, _ := overviewRateRange(courseRankings, func(item query.OverviewCourseRankingItem) float64 { return item.AttendanceRate })
 			return minRate
 		}(),
-		CourseRankingsMaxRate: func() float64 {
-			_, maxRate := overviewRateRange(courseRankings, func(item query.OverviewCourseRankingItem) float64 { return item.AttendanceRate })
-			return maxRate
-		}(),
 		ClassRankings:      classRankings,
 		ClassRankingsTotal: int64(len(classRankings)),
 		ClassRankingsMinRate: func() float64 {
 			minRate, _ := overviewRateRange(classRankings, func(item query.OverviewClassRankingItem) float64 { return item.AttendanceRate })
 			return minRate
-		}(),
-		ClassRankingsMaxRate: func() float64 {
-			_, maxRate := overviewRateRange(classRankings, func(item query.OverviewClassRankingItem) float64 { return item.AttendanceRate })
-			return maxRate
 		}(),
 		StudentRankings:      studentRankings,
 		StudentRankingsTotal: int64(len(studentRankings)),
@@ -203,19 +195,11 @@ func (s *AttendanceService) AdminOverview() (query.AdminOverviewData, error) {
 			minRate, _ := overviewRateRange(studentRankings, func(item query.OverviewStudentRankingItem) float64 { return item.AttendanceRate })
 			return minRate
 		}(),
-		StudentRankingsMaxRate: func() float64 {
-			_, maxRate := overviewRateRange(studentRankings, func(item query.OverviewStudentRankingItem) float64 { return item.AttendanceRate })
-			return maxRate
-		}(),
 		RecentSessions:      recentSessions,
 		RecentSessionsTotal: int64(len(recentSessions)),
 		RecentSessionsMinRate: func() float64 {
 			minRate, _ := overviewRateRange(recentSessions, func(item query.OverviewRecentSessionItem) float64 { return item.AttendanceRate })
 			return minRate
-		}(),
-		RecentSessionsMaxRate: func() float64 {
-			_, maxRate := overviewRateRange(recentSessions, func(item query.OverviewRecentSessionItem) float64 { return item.AttendanceRate })
-			return maxRate
 		}(),
 		RecentAbnormalStudents: recentAbnormalStudents,
 		RecentAbnormalTotal:    int64(len(recentAbnormalStudents)),
@@ -256,7 +240,7 @@ func (s *AttendanceService) AdminOverviewSection(section string, offset, limit i
 			items = reverseOverviewItems(items)
 		}
 		result.CourseRankings, result.CourseRankingsTotal, result.CourseRankingsHasMore = paginateOverviewItems(items, offset, limit)
-		result.CourseRankingsMinRate, result.CourseRankingsMaxRate = overviewRateRange(items, func(item query.OverviewCourseRankingItem) float64 { return item.AttendanceRate })
+		result.CourseRankingsMinRate, _ = overviewRateRange(items, func(item query.OverviewCourseRankingItem) float64 { return item.AttendanceRate })
 	case "class_rankings":
 		items, err := s.attendance.OverviewClassRankings(term.Name)
 		if err != nil {
@@ -270,7 +254,7 @@ func (s *AttendanceService) AdminOverviewSection(section string, offset, limit i
 			items = reverseOverviewItems(items)
 		}
 		result.ClassRankings, result.ClassRankingsTotal, result.ClassRankingsHasMore = paginateOverviewItems(items, offset, limit)
-		result.ClassRankingsMinRate, result.ClassRankingsMaxRate = overviewRateRange(items, func(item query.OverviewClassRankingItem) float64 { return item.AttendanceRate })
+		result.ClassRankingsMinRate, _ = overviewRateRange(items, func(item query.OverviewClassRankingItem) float64 { return item.AttendanceRate })
 	case "student_rankings":
 		items, err := s.attendance.OverviewStudentRankings(term.Name)
 		if err != nil {
@@ -284,14 +268,14 @@ func (s *AttendanceService) AdminOverviewSection(section string, offset, limit i
 			items = reverseOverviewItems(items)
 		}
 		result.StudentRankings, result.StudentRankingsTotal, result.StudentRankingsHasMore = paginateOverviewItems(items, offset, limit)
-		result.StudentRankingsMinRate, result.StudentRankingsMaxRate = overviewRateRange(items, func(item query.OverviewStudentRankingItem) float64 { return item.AttendanceRate })
+		result.StudentRankingsMinRate, _ = overviewRateRange(items, func(item query.OverviewStudentRankingItem) float64 { return item.AttendanceRate })
 	case "recent_sessions":
 		items, err := s.attendance.OverviewRecentSessions(term.Name)
 		if err != nil {
 			return query.AdminOverviewData{}, err
 		}
 		result.RecentSessions, result.RecentSessionsTotal, result.RecentSessionsHasMore = paginateOverviewItems(items, offset, limit)
-		result.RecentSessionsMinRate, result.RecentSessionsMaxRate = overviewRateRange(items, func(item query.OverviewRecentSessionItem) float64 { return item.AttendanceRate })
+		result.RecentSessionsMinRate, _ = overviewRateRange(items, func(item query.OverviewRecentSessionItem) float64 { return item.AttendanceRate })
 	case "recent_abnormal_students":
 		items, err := s.attendance.OverviewRecentAbnormalStudents(term.Name)
 		if err != nil {
