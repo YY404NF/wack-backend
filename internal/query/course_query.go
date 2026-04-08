@@ -25,6 +25,11 @@ type CourseCalendarItem struct {
 	TeacherName         string   `json:"teacher_name"`
 	HasAttendanceRecord bool     `json:"has_attendance_record"`
 	AttendanceRate      float64  `json:"attendance_rate"`
+	StudentCount        int64    `json:"student_count"`
+	RecordCount         int64    `json:"record_count"`
+	LateCount           int64    `json:"late_count"`
+	AbsentCount         int64    `json:"absent_count"`
+	LeaveCount          int64    `json:"leave_count"`
 	ClassNames          []string `gorm:"-" json:"class_names"`
 	ClassIDs            []uint64 `gorm:"-" json:"class_ids"`
 	Grades              []int    `gorm:"-" json:"grades"`
@@ -502,6 +507,36 @@ func (q *CourseQuery) CourseCalendar(weekNo, term string) ([]CourseCalendarItem,
 				FROM attendance_record
 				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
 			) AS has_attendance_record,
+			(
+				SELECT COUNT(1)
+				FROM course_group_student AS cgs
+				JOIN student ON student.id = cgs.student_id AND student.status = 1
+				WHERE cgs.course_group_id = course_group.id
+				  AND cgs.status = 1
+			) AS student_count,
+			(
+				SELECT COUNT(1)
+				FROM attendance_record
+				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
+			) AS record_count,
+			(
+				SELECT COUNT(1)
+				FROM attendance_record
+				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
+				  AND attendance_record.attendance_status = 1
+			) AS late_count,
+			(
+				SELECT COUNT(1)
+				FROM attendance_record
+				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
+				  AND attendance_record.attendance_status = 2
+			) AS absent_count,
+			(
+				SELECT COUNT(1)
+				FROM attendance_record
+				WHERE attendance_record.course_group_lesson_id = course_group_lesson.id
+				  AND attendance_record.attendance_status = 3
+			) AS leave_count,
 			COALESCE((
 				SELECT CASE
 					WHEN SUM(CASE WHEN attendance_record.attendance_status IN (0, 1, 2) THEN 1 ELSE 0 END) = 0 THEN 1

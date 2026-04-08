@@ -60,6 +60,7 @@ type OverviewRecentSessionItem struct {
 	BuildingName        string  `json:"building_name"`
 	RoomName            string  `json:"room_name"`
 	ClassSummary        string  `json:"class_summary"`
+	StudentCount        int64   `json:"student_count"`
 	RecordCount         int64   `json:"record_count"`
 	PresentCount        int64   `json:"present_count"`
 	LateCount           int64   `json:"late_count"`
@@ -377,6 +378,13 @@ func (q *AttendanceQuery) OverviewRecentSessions(termName string) ([]OverviewRec
 					ORDER BY class.class_name
 				)
 			), '其他学生') AS class_summary,
+			(
+				SELECT COUNT(1)
+				FROM course_group_student AS cgs
+				JOIN student ON student.id = cgs.student_id AND student.status = 1
+				WHERE cgs.course_group_id = course_group.id
+				  AND cgs.status = 1
+			) AS student_count,
 			COUNT(attendance_record.id) AS record_count,
 			SUM(CASE WHEN attendance_record.attendance_status = 0 THEN 1 ELSE 0 END) AS present_count,
 			SUM(CASE WHEN attendance_record.attendance_status = 1 THEN 1 ELSE 0 END) AS late_count,
