@@ -229,6 +229,65 @@ func TestAdminUpsertMissingAttendanceStatusCreatesRecordAndLog(t *testing.T) {
 	}
 }
 
+func TestAdminBulkUpsertAttendanceStatusesForStudentsUsesSingleBatch(t *testing.T) {
+	service, lesson, relation1, relation2 := setupAttendanceServiceTest(t)
+
+	if err := service.UpsertAttendanceStatusForStudent(lesson.ID, relation1.StudentID, model.AttendanceLate, 99, true); err != nil {
+		t.Fatalf("seed attendance record: %v", err)
+	}
+
+	result, err := service.BulkUpsertAttendanceStatusesForStudents(lesson.ID, []uint64{relation1.StudentID, relation2.StudentID, 9999, relation1.StudentID}, model.AttendanceAbsent, 100)
+	if err != nil {
+		t.Fatalf("bulk update attendance statuses: %v", err)
+	}
+
+	if result.AppliedCount != 2 || len(result.AppliedItems) != 2 {
+		t.Fatalf("unexpected applied result: %+v", result)
+	}
+	if result.FailedCount != 1 || len(result.FailedItems) != 1 || result.FailedItems[0] != 9999 {
+		t.Fatalf("unexpected failed result: %+v", result)
+	}
+
+	records, err := service.AttendanceRecords(lesson.ID)
+	if err != nil {
+		t.Fatalf("load records: %v", err)
+	}
+
+	statusByStudent := map[string]int{}
+	recordIDByStudent := map[string]uint64{}
+	for _, record := range records {
+		if record.Status != nil {
+			statusByStudent[record.StudentID] = *record.Status
+		}
+		if record.AttendanceRecordID != nil {
+			recordIDByStudent[record.StudentID] = *record.AttendanceRecordID
+		}
+	}
+
+	if statusByStudent["20250001"] != model.AttendanceAbsent {
+		t.Fatalf("expected student1 to be absent after bulk update: %+v", statusByStudent)
+	}
+	if statusByStudent["20250002"] != model.AttendanceAbsent {
+		t.Fatalf("expected student2 to be absent after bulk update: %+v", statusByStudent)
+	}
+
+	logs1, err := service.AttendanceRecordLogs(recordIDByStudent["20250001"])
+	if err != nil {
+		t.Fatalf("load student1 logs: %v", err)
+	}
+	if len(logs1) != 2 || logs1[0].OperationType != "set_status" {
+		t.Fatalf("unexpected student1 logs: %+v", logs1)
+	}
+
+	logs2, err := service.AttendanceRecordLogs(recordIDByStudent["20250002"])
+	if err != nil {
+		t.Fatalf("load student2 logs: %v", err)
+	}
+	if len(logs2) != 1 || logs2[0].OperationType != "create_record" {
+		t.Fatalf("unexpected student2 logs: %+v", logs2)
+	}
+}
+
 func TestAvailableCourseGroupLessonsOnlyReturnsCurrentTermSessions(t *testing.T) {
 	service, lesson, _, _ := setupAttendanceServiceTest(t)
 

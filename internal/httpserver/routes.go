@@ -109,6 +109,7 @@ func mountAttendanceRoutes(admin, student *gin.RouterGroup, apiHandler *apiHandl
 	admin.GET("/attendance-sessions", apiHandler.adminAttendanceSessions)
 	admin.GET("/attendance-sessions/:id", apiHandler.adminGetAttendanceSession)
 	admin.PATCH("/attendance-sessions/:id/students/:student_id/status", apiHandler.adminUpsertAttendanceStatus)
+	admin.PATCH("/attendance-sessions/:id/students/statuses", apiHandler.adminBulkUpsertAttendanceStatuses)
 	admin.PATCH("/attendance-records/:id/status", apiHandler.adminUpdateAttendanceStatus)
 	admin.GET("/attendance-records/:id/logs", apiHandler.adminAttendanceRecordLogs)
 	admin.GET("/attendance-record-logs", apiHandler.listAttendanceRecordLogs)

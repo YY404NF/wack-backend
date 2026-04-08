@@ -30,6 +30,13 @@ type SubmitAttendanceStatusesResult struct {
 	IgnoredCount  int      `json:"ignored_count"`
 }
 
+type AdminBulkUpdateAttendanceStatusesResult struct {
+	AppliedItems []uint64 `json:"applied_items"`
+	FailedItems  []uint64 `json:"failed_items"`
+	AppliedCount int      `json:"applied_count"`
+	FailedCount  int      `json:"failed_count"`
+}
+
 func NewAttendanceService(db *gorm.DB) *AttendanceService {
 	return &AttendanceService{db: db, attendance: query.NewAttendanceQuery(db), audit: newAuditLogger()}
 }
@@ -83,6 +90,25 @@ func overviewRateRange[T any](items []T, getter func(T) float64) (float64, float
 
 func overviewDisplayRateKey(rate float64) int {
 	return int(math.Round(rate * 1000))
+}
+
+func uniqueUint64s(values []uint64) []uint64 {
+	if len(values) == 0 {
+		return []uint64{}
+	}
+	result := make([]uint64, 0, len(values))
+	seen := make(map[uint64]struct{}, len(values))
+	for _, value := range values {
+		if value == 0 {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func assignDenseOverviewRanks[T any](items []T, getter func(T) float64, setter func(*T, int)) {
@@ -428,6 +454,114 @@ func (s *AttendanceService) UpsertAttendanceStatusForStudent(sessionID, studentI
 		}
 		return s.audit.logAttendanceStatusChange(tx, record, operatorUserID, &oldStatus, status, now)
 	})
+}
+
+func (s *AttendanceService) BulkUpsertAttendanceStatusesForStudents(sessionID uint64, studentIDs []uint64, status int, operatorUserID uint64) (AdminBulkUpdateAttendanceStatusesResult, error) {
+	uniqueStudentIDs := uniqueUint64s(studentIDs)
+	if len(uniqueStudentIDs) == 0 {
+		return AdminBulkUpdateAttendanceStatusesResult{}, nil
+	}
+
+	var result AdminBulkUpdateAttendanceStatusesResult
+	now := time.Now()
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var lesson model.CourseGroupLesson
+		if err := tx.First(&lesson, sessionID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrCourseGroupLessonNotFound
+			}
+			return err
+		}
+
+		var group model.CourseGroup
+		if err := tx.First(&group, lesson.CourseGroupID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrCourseGroupNotFound
+			}
+			return err
+		}
+
+		var relations []model.CourseGroupStudent
+		if err := tx.
+			Where("course_group_id = ? AND student_id IN ? AND status = 1", lesson.CourseGroupID, uniqueStudentIDs).
+			Find(&relations).Error; err != nil {
+			return err
+		}
+		relationByStudentID := make(map[uint64]model.CourseGroupStudent, len(relations))
+		for _, relation := range relations {
+			relationByStudentID[relation.StudentID] = relation
+		}
+
+		var records []model.AttendanceRecord
+		if err := tx.
+			Where("course_group_lesson_id = ? AND student_id IN ?", lesson.ID, uniqueStudentIDs).
+			Find(&records).Error; err != nil {
+			return err
+		}
+		recordByStudentID := make(map[uint64]model.AttendanceRecord, len(records))
+		for _, record := range records {
+			recordByStudentID[record.StudentID] = record
+		}
+
+		for _, studentID := range uniqueStudentIDs {
+			relation, ok := relationByStudentID[studentID]
+			if !ok {
+				result.FailedItems = append(result.FailedItems, studentID)
+				result.FailedCount++
+				continue
+			}
+
+			record, hasRecord := recordByStudentID[studentID]
+			if !hasRecord {
+				record = model.AttendanceRecord{
+					TermID:              group.TermID,
+					CourseID:            group.CourseID,
+					CourseGroupLessonID: lesson.ID,
+					StudentID:           studentID,
+					ClassID:             relation.ClassID,
+					AttendanceStatus:    status,
+					UpdatedByUserID:     &operatorUserID,
+					CreatedAt:           now,
+					UpdatedAt:           now,
+				}
+				if err := tx.Create(&record).Error; err != nil {
+					return err
+				}
+				if err := s.audit.logAttendanceStatusCreate(tx, record, operatorUserID, status, now); err != nil {
+					return err
+				}
+				result.AppliedItems = append(result.AppliedItems, studentID)
+				result.AppliedCount++
+				continue
+			}
+
+			if record.AttendanceStatus != status {
+				oldStatus := record.AttendanceStatus
+				if err := tx.Model(&record).Updates(map[string]interface{}{
+					"attendance_status":  status,
+					"updated_by_user_id": operatorUserID,
+					"updated_at":         now,
+				}).Error; err != nil {
+					return err
+				}
+				record.AttendanceStatus = status
+				record.UpdatedByUserID = &operatorUserID
+				record.UpdatedAt = now
+				if err := s.audit.logAttendanceStatusChange(tx, record, operatorUserID, &oldStatus, status, now); err != nil {
+					return err
+				}
+			}
+
+			result.AppliedItems = append(result.AppliedItems, studentID)
+			result.AppliedCount++
+		}
+
+		return nil
+	})
+	if err != nil {
+		return AdminBulkUpdateAttendanceStatusesResult{}, err
+	}
+	return result, nil
 }
 
 func (s *AttendanceService) SubmitAttendanceStatuses(checkID uint64, operatorUserID uint64, items []AttendanceStatusInput, withinDeadline func(model.CourseGroupLesson, time.Time) bool) (SubmitAttendanceStatusesResult, error) {

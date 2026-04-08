@@ -499,6 +499,39 @@ func (h *apiHandler) adminUpsertAttendanceStatus(c *gin.Context) {
 	ok(c, gin.H{})
 }
 
+func (h *apiHandler) adminBulkUpsertAttendanceStatuses(c *gin.Context) {
+	user, _ := currentUser(c)
+	sessionID, err := parseUintParam(c, "id")
+	if err != nil {
+		fail(c, 400, err.Error())
+		return
+	}
+	var req dto.BulkUpdateAttendanceStatusesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, 400, "invalid request")
+		return
+	}
+	if req.Status == nil || len(req.StudentRefIDs) == 0 {
+		fail(c, 400, "invalid request")
+		return
+	}
+	if *req.Status < model.AttendancePresent || *req.Status > model.AttendanceOnLeave {
+		fail(c, 400, "invalid status")
+		return
+	}
+	result, err := h.attendance.BulkUpsertAttendanceStatusesForStudents(sessionID, req.StudentRefIDs, *req.Status, user.ID)
+	if err != nil {
+		switch {
+		case service.IsServiceError(err, service.ErrCourseGroupLessonNotFound):
+			fail(c, 404, "course group lesson not found")
+		default:
+			fail(c, 500, "update attendance statuses failed")
+		}
+		return
+	}
+	ok(c, result)
+}
+
 func (h *apiHandler) adminUpdateAttendanceStatus(c *gin.Context) {
 	user, _ := currentUser(c)
 	id, err := parseUintParam(c, "id")
