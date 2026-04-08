@@ -408,6 +408,62 @@ func (s *AttendanceService) UpdateAttendanceStatus(detailID uint64, status int, 
 	})
 }
 
+func (s *AttendanceService) BulkUpdateAttendanceRecordStatuses(recordIDs []uint64, status int, operatorUserID uint64) (AdminBulkUpdateAttendanceStatusesResult, error) {
+	uniqueRecordIDs := uniqueUint64s(recordIDs)
+	if len(uniqueRecordIDs) == 0 {
+		return AdminBulkUpdateAttendanceStatusesResult{}, nil
+	}
+
+	var result AdminBulkUpdateAttendanceStatusesResult
+	now := time.Now()
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var records []model.AttendanceRecord
+		if err := tx.Where("id IN ?", uniqueRecordIDs).Find(&records).Error; err != nil {
+			return err
+		}
+
+		recordByID := make(map[uint64]model.AttendanceRecord, len(records))
+		for _, record := range records {
+			recordByID[record.ID] = record
+		}
+
+		for _, recordID := range uniqueRecordIDs {
+			record, ok := recordByID[recordID]
+			if !ok {
+				result.FailedItems = append(result.FailedItems, recordID)
+				result.FailedCount++
+				continue
+			}
+
+			if record.AttendanceStatus != status {
+				oldStatus := record.AttendanceStatus
+				if err := tx.Model(&record).Updates(map[string]interface{}{
+					"attendance_status":  status,
+					"updated_by_user_id": operatorUserID,
+					"updated_at":         now,
+				}).Error; err != nil {
+					return err
+				}
+				record.AttendanceStatus = status
+				record.UpdatedByUserID = &operatorUserID
+				record.UpdatedAt = now
+				if err := s.audit.logAttendanceStatusChange(tx, record, operatorUserID, &oldStatus, status, now); err != nil {
+					return err
+				}
+			}
+
+			result.AppliedItems = append(result.AppliedItems, recordID)
+			result.AppliedCount++
+		}
+
+		return nil
+	})
+	if err != nil {
+		return AdminBulkUpdateAttendanceStatusesResult{}, err
+	}
+	return result, nil
+}
+
 func (s *AttendanceService) UpsertAttendanceStatusForStudent(sessionID, studentID uint64, status int, operatorUserID uint64, allowOverwrite bool) error {
 	now := time.Now()
 	return s.db.Transaction(func(tx *gorm.DB) error {

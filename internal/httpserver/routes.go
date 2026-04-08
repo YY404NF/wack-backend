@@ -64,6 +64,8 @@ func mountClassRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 func mountStudentRoutes(admin *gin.RouterGroup, apiHandler *apiHandler) {
 	admin.GET("/student-options", apiHandler.listStudentOptions)
 	admin.GET("/students", apiHandler.listStudents)
+	admin.GET("/students/:id/attendance-records", apiHandler.listStudentAttendanceRecords)
+	admin.PATCH("/students/:id/attendance-records/statuses", apiHandler.bulkUpdateStudentAttendanceRecordStatuses)
 	admin.POST("/students", apiHandler.createStudent)
 	admin.PUT("/students/:id", apiHandler.updateStudent)
 	admin.DELETE("/students/:id", apiHandler.deleteStudent)

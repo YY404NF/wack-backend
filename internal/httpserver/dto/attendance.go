@@ -13,6 +13,11 @@ type BulkUpdateAttendanceStatusesRequest struct {
 	Status        *int     `json:"status"`
 }
 
+type BulkUpdateAttendanceRecordStatusesRequest struct {
+	AttendanceRecordIDs []uint64 `json:"attendance_record_ids" binding:"required"`
+	Status              *int     `json:"status"`
+}
+
 type SubmitAttendanceStatusItem struct {
 	StudentRefID uint64 `json:"student_ref_id" binding:"required"`
 	Status       *int   `json:"status"`

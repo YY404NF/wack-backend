@@ -28,13 +28,15 @@ func (h *apiHandler) listStudents(c *gin.Context) {
 	classID, _ := strconv.ParseUint(c.DefaultQuery("class_id", "0"), 10, 64)
 	focusStudentID, _ := strconv.ParseUint(c.DefaultQuery("focus_student_ref_id", "0"), 10, 64)
 	listInput := service.ListStudentsInput{
-		Page:      page,
-		PageSize:  pageSize,
-		ClassID:   classID,
-		Keyword:   c.Query("keyword"),
-		StudentID: c.Query("student_id"),
-		RealName:  c.Query("real_name"),
-		ClassName: c.Query("class_name"),
+		Page:                    page,
+		PageSize:                pageSize,
+		ClassID:                 classID,
+		Keyword:                 c.Query("keyword"),
+		StudentID:               c.Query("student_id"),
+		RealName:                c.Query("real_name"),
+		ClassName:               c.Query("class_name"),
+		Term:                    c.Query("term"),
+		AttendanceSummaryStatus: c.Query("attendance_summary_status"),
 	}
 	var focusResult *query.FocusPageResult
 	if focusStudentID > 0 {
@@ -50,13 +52,15 @@ func (h *apiHandler) listStudents(c *gin.Context) {
 		}
 	}
 	items, total, err := h.students.ListStudents(service.ListStudentsInput{
-		Page:      page,
-		PageSize:  pageSize,
-		ClassID:   classID,
-		Keyword:   c.Query("keyword"),
-		StudentID: c.Query("student_id"),
-		RealName:  c.Query("real_name"),
-		ClassName: c.Query("class_name"),
+		Page:                    page,
+		PageSize:                pageSize,
+		ClassID:                 classID,
+		Keyword:                 c.Query("keyword"),
+		StudentID:               c.Query("student_id"),
+		RealName:                c.Query("real_name"),
+		ClassName:               c.Query("class_name"),
+		Term:                    c.Query("term"),
+		AttendanceSummaryStatus: c.Query("attendance_summary_status"),
 	})
 	if err != nil {
 		fail(c, 500, "list students failed")
@@ -69,6 +73,80 @@ func (h *apiHandler) listStudents(c *gin.Context) {
 			result.FocusPage = &focusResult.Page
 			result.FocusRowKey = &focusResult.RowKey
 		}
+	}
+	ok(c, result)
+}
+
+func (h *apiHandler) listStudentAttendanceRecords(c *gin.Context) {
+	studentID, err := parseUintParam(c, "id")
+	if err != nil {
+		fail(c, 400, err.Error())
+		return
+	}
+	page, pageSize := parsePage(c)
+	student, items, total, err := h.students.GetStudentAttendancePage(studentID, service.ListStudentAttendanceInput{
+		Page:         page,
+		PageSize:     pageSize,
+		Term:         c.Query("term"),
+		LessonDate:   c.Query("lesson_date"),
+		Section:      c.Query("section"),
+		CourseName:   c.Query("course_name"),
+		TeacherName:  c.Query("teacher_name"),
+		Status:       c.Query("status"),
+		OperatorName: c.Query("operator_name"),
+		OperatedDate: c.Query("operated_date"),
+	})
+	if err != nil {
+		switch {
+		case service.IsServiceError(err, service.ErrStudentNotFound):
+			fail(c, 404, "student not found")
+		default:
+			fail(c, 500, "load student attendance records failed")
+		}
+		return
+	}
+	ok(c, gin.H{
+		"student":            student,
+		"attendance_records": items,
+		"page":               page,
+		"page_size":          pageSize,
+		"total":              total,
+	})
+}
+
+func (h *apiHandler) bulkUpdateStudentAttendanceRecordStatuses(c *gin.Context) {
+	user, _ := currentUser(c)
+	studentID, err := parseUintParam(c, "id")
+	if err != nil {
+		fail(c, 400, err.Error())
+		return
+	}
+	var req dto.BulkUpdateAttendanceRecordStatusesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, 400, "invalid request")
+		return
+	}
+	if req.Status == nil || len(req.AttendanceRecordIDs) == 0 {
+		fail(c, 400, "invalid request")
+		return
+	}
+	if *req.Status < model.AttendancePresent || *req.Status > model.AttendanceOnLeave {
+		fail(c, 400, "invalid status")
+		return
+	}
+	if _, err := h.students.GetStudent(studentID); err != nil {
+		switch {
+		case service.IsServiceError(err, service.ErrStudentNotFound):
+			fail(c, 404, "student not found")
+		default:
+			fail(c, 500, "load student attendance records failed")
+		}
+		return
+	}
+	result, err := h.attendance.BulkUpdateAttendanceRecordStatuses(req.AttendanceRecordIDs, *req.Status, user.ID)
+	if err != nil {
+		fail(c, 500, "update attendance statuses failed")
+		return
 	}
 	ok(c, result)
 }

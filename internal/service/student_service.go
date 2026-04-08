@@ -10,13 +10,28 @@ import (
 )
 
 type ListStudentsInput struct {
-	Page      int
-	PageSize  int
-	ClassID   uint64
-	Keyword   string
-	StudentID string
-	RealName  string
-	ClassName string
+	Page                    int
+	PageSize                int
+	ClassID                 uint64
+	Keyword                 string
+	StudentID               string
+	RealName                string
+	ClassName               string
+	Term                    string
+	AttendanceSummaryStatus string
+}
+
+type ListStudentAttendanceInput struct {
+	Page         int
+	PageSize     int
+	Term         string
+	LessonDate   string
+	Section      string
+	CourseName   string
+	TeacherName  string
+	Status       string
+	OperatorName string
+	OperatedDate string
 }
 
 type StudentService struct {
@@ -39,13 +54,15 @@ func (s *StudentService) ListStudents(input ListStudentsInput) ([]query.StudentI
 		input.PageSize = 20
 	}
 	return s.students.ListStudents(query.ListStudentsInput{
-		Page:      input.Page,
-		PageSize:  input.PageSize,
-		ClassID:   input.ClassID,
-		Keyword:   input.Keyword,
-		StudentID: input.StudentID,
-		RealName:  input.RealName,
-		ClassName: input.ClassName,
+		Page:                    input.Page,
+		PageSize:                input.PageSize,
+		ClassID:                 input.ClassID,
+		Keyword:                 input.Keyword,
+		StudentID:               input.StudentID,
+		RealName:                input.RealName,
+		ClassName:               input.ClassName,
+		Term:                    input.Term,
+		AttendanceSummaryStatus: input.AttendanceSummaryStatus,
 	})
 }
 
@@ -54,14 +71,54 @@ func (s *StudentService) LocateStudentPage(input ListStudentsInput, focusStudent
 		input.PageSize = 20
 	}
 	return s.students.LocateStudentPage(query.ListStudentsInput{
-		Page:      input.Page,
-		PageSize:  input.PageSize,
-		ClassID:   input.ClassID,
-		Keyword:   input.Keyword,
-		StudentID: input.StudentID,
-		RealName:  input.RealName,
-		ClassName: input.ClassName,
+		Page:                    input.Page,
+		PageSize:                input.PageSize,
+		ClassID:                 input.ClassID,
+		Keyword:                 input.Keyword,
+		StudentID:               input.StudentID,
+		RealName:                input.RealName,
+		ClassName:               input.ClassName,
+		Term:                    input.Term,
+		AttendanceSummaryStatus: input.AttendanceSummaryStatus,
 	}, focusStudentID, input.PageSize)
+}
+
+func (s *StudentService) GetStudentAttendancePage(studentID uint64, input ListStudentAttendanceInput) (query.StudentItem, []query.StudentAttendanceItem, int64, error) {
+	if input.Page <= 0 {
+		input.Page = 1
+	}
+	if input.PageSize <= 0 {
+		input.PageSize = 20
+	}
+
+	student, err := s.students.GetStudent(studentID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return query.StudentItem{}, nil, 0, ErrStudentNotFound
+		}
+		return query.StudentItem{}, nil, 0, err
+	}
+	if student.ID == 0 {
+		return query.StudentItem{}, nil, 0, ErrStudentNotFound
+	}
+
+	items, total, err := s.students.ListStudentAttendance(studentID, query.ListStudentAttendanceInput{
+		Page:         input.Page,
+		PageSize:     input.PageSize,
+		Term:         input.Term,
+		LessonDate:   input.LessonDate,
+		Section:      input.Section,
+		CourseName:   input.CourseName,
+		TeacherName:  input.TeacherName,
+		Status:       input.Status,
+		OperatorName: input.OperatorName,
+		OperatedDate: input.OperatedDate,
+	})
+	if err != nil {
+		return query.StudentItem{}, nil, 0, err
+	}
+
+	return student, items, total, nil
 }
 
 func (s *StudentService) CreateStudent(student model.Student) (query.StudentItem, error) {
@@ -88,6 +145,20 @@ func (s *StudentService) CreateStudent(student model.Student) (query.StudentItem
 		return query.StudentItem{}, err
 	}
 	return s.students.GetStudent(student.ID)
+}
+
+func (s *StudentService) GetStudent(id uint64) (query.StudentItem, error) {
+	student, err := s.students.GetStudent(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return query.StudentItem{}, ErrStudentNotFound
+		}
+		return query.StudentItem{}, err
+	}
+	if student.ID == 0 {
+		return query.StudentItem{}, ErrStudentNotFound
+	}
+	return student, nil
 }
 
 func (s *StudentService) UpdateStudent(id uint64, input model.Student) (query.StudentItem, error) {
