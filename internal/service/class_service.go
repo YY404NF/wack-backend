@@ -19,12 +19,43 @@ func NewClassService(db *gorm.DB) *ClassService {
 	return &ClassService{db: db, classes: query.NewClassQuery(db)}
 }
 
-func (s *ClassService) ListClasses(grade, majorName, className string, page, pageSize int) ([]model.Class, int64, error) {
-	return s.classes.ListClasses(grade, strings.TrimSpace(majorName), strings.TrimSpace(className), page, pageSize)
+type ListClassAttendanceInput struct {
+	Page         int
+	PageSize     int
+	Term         string
+	LessonDate   string
+	Section      string
+	CourseName   string
+	TeacherName  string
+	StudentID    string
+	RealName     string
+	Status       string
+	OperatorName string
+	OperatedDate string
 }
 
-func (s *ClassService) LocateClassPage(grade, majorName, className string, focusClassID uint64, pageSize int) (query.FocusPageResult, error) {
-	return s.classes.LocateClassPage(grade, strings.TrimSpace(majorName), strings.TrimSpace(className), focusClassID, pageSize)
+func (s *ClassService) ListClasses(grade, majorName, className, termName, attendanceSummaryStatus string, page, pageSize int) ([]model.Class, int64, error) {
+	return s.classes.ListClasses(
+		grade,
+		strings.TrimSpace(majorName),
+		strings.TrimSpace(className),
+		strings.TrimSpace(termName),
+		strings.TrimSpace(attendanceSummaryStatus),
+		page,
+		pageSize,
+	)
+}
+
+func (s *ClassService) LocateClassPage(grade, majorName, className, termName, attendanceSummaryStatus string, focusClassID uint64, pageSize int) (query.FocusPageResult, error) {
+	return s.classes.LocateClassPage(
+		grade,
+		strings.TrimSpace(majorName),
+		strings.TrimSpace(className),
+		strings.TrimSpace(termName),
+		strings.TrimSpace(attendanceSummaryStatus),
+		focusClassID,
+		pageSize,
+	)
 }
 
 func (s *ClassService) CreateClass(class model.Class) (model.Class, error) {
@@ -48,6 +79,40 @@ func (s *ClassService) GetClass(id uint64) (model.Class, error) {
 		return model.Class{}, err
 	}
 	return classItem, nil
+}
+
+func (s *ClassService) GetClassAttendancePage(classID uint64, input ListClassAttendanceInput) (model.Class, []query.ClassAttendanceItem, int64, error) {
+	if input.Page <= 0 {
+		input.Page = 1
+	}
+	if input.PageSize <= 0 {
+		input.PageSize = 20
+	}
+
+	classItem, err := s.GetClass(classID)
+	if err != nil {
+		return model.Class{}, nil, 0, err
+	}
+
+	items, total, err := s.classes.ListClassAttendance(classID, query.ListClassAttendanceInput{
+		Page:         input.Page,
+		PageSize:     input.PageSize,
+		Term:         input.Term,
+		LessonDate:   input.LessonDate,
+		Section:      input.Section,
+		CourseName:   input.CourseName,
+		TeacherName:  input.TeacherName,
+		StudentID:    input.StudentID,
+		RealName:     input.RealName,
+		Status:       input.Status,
+		OperatorName: input.OperatorName,
+		OperatedDate: input.OperatedDate,
+	})
+	if err != nil {
+		return model.Class{}, nil, 0, err
+	}
+
+	return classItem, items, total, nil
 }
 
 func (s *ClassService) UpdateClass(id uint64, req model.Class) (model.Class, error) {

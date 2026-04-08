@@ -47,6 +47,9 @@ type Class struct {
 	MajorName    string    `gorm:"column:major_name;size:100;not null;index:idx_grade_major" json:"major_name"`
 	Status       int       `gorm:"column:status;not null;default:1;index:idx_status" json:"status"`
 	StudentCount int64     `gorm:"column:student_count;->;-:migration" json:"student_count"`
+	LateCount    int64     `gorm:"column:late_count;->;-:migration" json:"late_count"`
+	AbsentCount  int64     `gorm:"column:absent_count;->;-:migration" json:"absent_count"`
+	LeaveCount   int64     `gorm:"column:leave_count;->;-:migration" json:"leave_count"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime" json:"created_at"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
