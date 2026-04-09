@@ -27,21 +27,22 @@ type ClassOptionItem struct {
 }
 
 type ClassAttendanceItem struct {
-	ID           uint64     `json:"id"`
-	StudentID    string     `json:"student_id"`
-	RealName     string     `json:"real_name"`
-	CourseID     uint64     `json:"course_id"`
-	TermID       uint64     `json:"term_id"`
-	Term         string     `json:"term"`
-	LessonDate   string     `json:"lesson_date"`
-	WeekNo       int        `json:"week_no"`
-	Weekday      int        `json:"weekday"`
-	Section      int        `json:"section"`
-	CourseName   string     `json:"course_name"`
-	TeacherName  string     `json:"teacher_name"`
-	Status       int        `json:"status"`
-	OperatorName string     `json:"operator_name"`
-	OperatedAt   *time.Time `json:"operated_at"`
+	ID                  uint64     `json:"id"`
+	CourseGroupLessonID uint64     `json:"course_group_lesson_id"`
+	StudentID           string     `json:"student_id"`
+	RealName            string     `json:"real_name"`
+	CourseID            uint64     `json:"course_id"`
+	TermID              uint64     `json:"term_id"`
+	Term                string     `json:"term"`
+	LessonDate          string     `json:"lesson_date"`
+	WeekNo              int        `json:"week_no"`
+	Weekday             int        `json:"weekday"`
+	Section             int        `json:"section"`
+	CourseName          string     `json:"course_name"`
+	TeacherName         string     `json:"teacher_name"`
+	Status              int        `json:"status"`
+	OperatorName        string     `json:"operator_name"`
+	OperatedAt          *time.Time `json:"operated_at"`
 }
 
 type ListClassAttendanceInput struct {
@@ -207,6 +208,7 @@ func (q *ClassQuery) listClassAttendanceBase(classID uint64, input ListClassAtte
 	base := q.db.Table("attendance_record").
 		Select(`
 			attendance_record.id,
+			attendance_record.course_group_lesson_id,
 			student.student_no AS student_id,
 			student.student_name AS real_name,
 			course.id AS course_id,
